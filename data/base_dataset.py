@@ -1,7 +1,9 @@
 import torch.utils.data as data
 from PIL import Image
 import torchvision.transforms as transforms
-from .augmentation import TransResize, TransCrop, TransFlip, TransResize3, TransCrop3, TransFlip3
+from .augmentation import TransResize, TransCrop, TransFlip, TransResize3, TransCrop3, TransFlip3, TransResizeN, \
+    TransCropN, TransFlipN
+
 
 class BaseDataset(data.Dataset):
     def __init__(self):
@@ -40,7 +42,7 @@ def night_train_transform(opt):
         if not opt.no_flip:
             transform_list.append(TransFlip(prob=0.5))
 
-    # transform_list.append(transforms.ToTensor())
+    transform_list.append(transforms.ToTensor())
     return transform_list
 
 def night_train_transformv3(opt):
@@ -53,6 +55,20 @@ def night_train_transformv3(opt):
             transform_list.append(TransCrop3(opt.fineSize))
         if not opt.no_flip:
             transform_list.append(TransFlip3(prob=0.5))
+
+    # transform_list.append(transforms.ToTensor())
+    return transform_list
+
+def night_train_transformvN(opt):
+    transform_list = []
+    if 'resize' in opt.resize_or_crop:
+        transform_list.append(TransResizeN(opt.loadSize))
+
+    if opt.isTrain:
+        if 'crop' in opt.resize_or_crop:
+            transform_list.append(TransCropN(opt.fineSize))
+        if not opt.no_flip:
+            transform_list.append(TransFlipN(prob=0.5))
 
     # transform_list.append(transforms.ToTensor())
     return transform_list

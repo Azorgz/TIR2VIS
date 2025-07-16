@@ -1,0 +1,3 @@
+[submodule "ImagesCameras"]
+	path = ImagesCameras
+	url = https://github.com/Azorgz/ImagesCameras.git

@@ -2,17 +2,17 @@ import time
 import os
 from options.test_options import TestOptions
 from data.data_loader import DataLoader
-from models.combogan_model import ComboGANModel
+from models.combogan_model import GanColorCombo
+from options.train_options import TrainOptions
 from util.visualizer import Visualizer
 from util import html
 
 
-opt = TestOptions().parse()
+opt = TrainOptions().parse()
 opt.nThreads = 1   # test code only supports nThreads = 1
 opt.batchSize = 1  # test code only supports batchSize = 1
-
 dataset = DataLoader(opt)
-model = ComboGANModel(opt)
+model = GanColorCombo(opt)
 visualizer = Visualizer(opt)
 # create website
 web_dir = os.path.join(opt.results_dir, opt.name, '%s_%d' % (opt.phase, opt.which_epoch))
@@ -24,6 +24,7 @@ vis_buffer = []
 for i, data in enumerate(dataset):
     if not opt.serial_test and i >= opt.how_many:
         break
+    data['DA'] += 1
     model.set_input(data)
     model.test(output_only=True)
     visuals = model.get_current_visuals(testing=True)
@@ -38,5 +39,5 @@ for i, data in enumerate(dataset):
             visualizer.save_image_matrix(vis_buffer, save_path)
             vis_buffer.clear()
 
-webpage.save()
+# webpage.save()
 

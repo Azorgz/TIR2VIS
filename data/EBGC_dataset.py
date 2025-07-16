@@ -1,35 +1,47 @@
 import os.path, glob
 import numpy as np
+import oyaml
 import torchvision.transforms as transforms
-from data.base_dataset import BaseDataset, get_transform, night_train_transformv3
+from einops import repeat
+from kornia.filters import guided_blur
+
+from ImagesCameras import ImageTensor
+from ImagesCameras.Metrics import SSIM
+from data.base_dataset import BaseDataset, get_transform, night_train_transformvN
 from data.image_folder import make_dataset
 from PIL import Image
 import random
 import torch
 import json
 
+
 class EBGCDataset(BaseDataset):
     def __init__(self, opt):
         super(EBGCDataset, self).__init__()
         self.opt = opt
         self.transform = get_transform(opt)
-        self.night_edge_transform = night_train_transformv3(opt)
-
-        datapath = os.path.join(opt.dataroot, opt.phase + '*')
-        self.dirs = sorted(glob.glob(datapath))
+        self.night_edge_transform = night_train_transformvN(opt)
         if self.opt.isTrain:
-            self.IR_edge_paths = opt.IR_edge_path  #######Edit by lfy########
-            self.Vis_edge_paths = opt.Vis_edge_path
-            self.Vis_mask_paths = opt.Vis_mask_path
-            self.IR_mask_paths = opt.IR_mask_path
-            self.IR_FG_txt = opt.IR_FG_txt
-            self.Vis_FG_txt = opt.Vis_FG_txt
-            self.FB_Sample_Vis_txt = opt.FB_Sample_Vis_txt
-            self.FB_Sample_IR_txt = opt.FB_Sample_IR_txt
+            datapath = os.path.join(opt.dataroot, 'FLIR_datasets', opt.phase + '*')
+            self.dirs = sorted(glob.glob(datapath))
+            partial = 2
+            self.IR_edge_paths = os.path.join(opt.dataroot, opt.IR_edge_path)  #######Edit by lfy########
+            self.Vis_edge_paths = os.path.join(opt.dataroot, opt.Vis_edge_path)
+            self.Vis_mask_paths = os.path.join(opt.dataroot, opt.Vis_mask_path)
+            self.IR_mask_paths = os.path.join(opt.dataroot, opt.IR_mask_path)
+            self.IR_FG_txt = os.path.join(opt.dataroot, opt.IR_FG_txt)
+            self.Vis_FG_txt = os.path.join(opt.dataroot, opt.Vis_FG_txt)
+            self.FB_Sample_Vis_txt = os.path.join(opt.dataroot, opt.FB_Sample_Vis_txt)
+            self.FB_Sample_IR_txt = os.path.join(opt.dataroot, opt.FB_Sample_IR_txt)
             self.num_class = opt.num_class
-
-        self.paths = [sorted(make_dataset(d)) for d in self.dirs] #####return all paths in two folders
-        self.sizes = [len(p) for p in self.paths] ####return the image number in two folders
+            with open('/home/godeta/PycharmProjects/TIR2VIS/datasets/FLIR/FLIR_datasets/crop.yaml', 'r') as f:
+                self.crop_xxyy = oyaml.safe_load(f)['crop']
+        else:
+            datapath = [opt.dataroot]
+            self.dirs = datapath
+            partial = opt.partial
+        self.paths = [sorted(make_dataset(d, partial)) for d in self.dirs]  #####return all paths in three folders
+        self.sizes = [len(p) for p in self.paths]  ####return the image number in two folders
 
     def load_image(self, dom, idx):
         path = self.paths[dom][idx]
@@ -37,35 +49,61 @@ class EBGCDataset(BaseDataset):
         img = self.transform(img)
         return img, path
 
-    def load_image_train(self, dom, idx):
-        path = self.paths[dom][idx]
-        img = np.array(Image.open(path).convert('RGB'))
-        path_split = path.split('/')
-        img_name = path_split[-1]
-        if dom == 0:
-            edge_map_file = self.Vis_edge_paths + img_name
-            seg_mask_file = self.Vis_mask_paths + img_name
-            seg_mask = np.array(Image.open(seg_mask_file))
+    def load_image_train(self, dom, idx, sup_dom=None, crop=False):
+        if crop:
+            crop_xxyy = self.crop_xxyy[idx]
         else:
-            edge_map_file = self.IR_edge_paths + img_name
-            # seg_mask = np.zeros_like(np.array(Image.open(edge_map_file)))
-            seg_mask_file = self.IR_mask_paths + img_name
-            seg_mask = np.array(Image.open(seg_mask_file))
-        edge_map = np.array(Image.open(edge_map_file).convert('L'))
+            crop_xxyy = [0, 0, 0, 0]
+        path = self.paths[dom][idx]
+        img = ImageTensor(path).crop(crop_xxyy, mode='lrtb').RGB()
+        img_name = path.split('/')[-1]
+
+        if sup_dom is not None:
+            img_sup = ImageTensor(self.paths[sup_dom][idx]).RGB().crop(crop_xxyy, mode='lrtb')
+        if dom == 0:
+            edge_map = ImageTensor(self.Vis_edge_paths + img_name).GRAY().crop(crop_xxyy, mode='lrtb')
+            seg_mask = (ImageTensor(self.Vis_mask_paths + img_name.replace('.jpg', '.png')).crop(crop_xxyy, mode='lrtb').match_shape(img, mode='nearest') * 255).to(torch.uint8)
+        else:
+            edge_map = ImageTensor(self.IR_edge_paths + img_name).GRAY().crop(crop_xxyy, mode='lrtb')
+            seg_mask = (ImageTensor(self.IR_mask_paths + img_name.replace('.jpeg', '.png')).crop(crop_xxyy, mode='lrtb').match_shape(img, mode='nearest') * 255).to(torch.uint8)
 
         for func in self.night_edge_transform:
-            img, edge_map, seg_mask = func(img, edge_map, seg_mask)
-        # img = img.transpose(2, 0, 1) / 255.0
-        transform_list_torch = [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
-        transform_new = transforms.Compose(transform_list_torch)
-        # img = torch.from_numpy(img_file.transpose((2, 0, 1)))
-        img_new = Image.fromarray(np.uint8(img))
-        img_res = transform_new(img_new)
-        edge_map = edge_map / 255.0
-        seg_mask = np.asarray(Image.fromarray(seg_mask), dtype=np.int64)
-        # print(seg_mask)
+            if sup_dom is not None:
+                img, edge_map, seg_mask, img_sup = func(img, edge_map, seg_mask, img_sup)
+            else:
+                img, edge_map, seg_mask = func(img, edge_map, seg_mask)
+        transform_list_torch = [ImageTensor.to_tensor, transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+        transform = transforms.Compose(transform_list_torch)
+        if sup_dom is not None:
+            img_fus = transform(self.fus_input(img_sup, img))
+            img_res = transform(img)
+            img_sup_res = transform(img_sup)
+            return img_res.squeeze(0), img_sup_res.squeeze(0), img_fus.squeeze(0), edge_map.squeeze(0), (seg_mask.squeeze() * 255).to(torch.uint8).clone()
 
-        return img_res, path, torch.tensor(edge_map), seg_mask.copy()
+        img_res = transform(img)
+        return img_res.squeeze(0), edge_map.squeeze(0), (seg_mask.squeeze() * 255).to(torch.uint8).clone()
+
+    def fus_input(self, img1, img2):
+        ssim = SSIM(torch.device('cpu'))
+        lab = ImageTensor(img1).LAB()
+        image_target = lab[:, :1]
+        image_ref = ImageTensor(img2).RGB('gray')
+        ssim_mask = ssim(image_target, image_ref, return_image=True)
+        ssim_mask = ssim_mask.GRAY().resize(image_target.shape[-2:])
+        ssim_mask = guided_blur(image_ref, ssim_mask, 3, 0.1)**2
+        ssim_fused_L = lab[:, :1] * ssim_mask + (1 - ssim_mask) * img2.GRAY()
+        # ssim_fused_L = img2.GRAY()
+        lab = self.color_clamp(lab)
+        lab[:, :1] = ssim_fused_L
+        return lab.RGB().detach()
+
+    def color_clamp(self, lab):
+        L, AB = lab[:, :1], lab[:, 1:]
+        mask = torch.where(L < L.mean() - L.std(), 0, 1)
+        mask_AB = repeat(mask, 'b () h w -> b c h w', c=2)
+        AB = AB * mask_AB + 0.5 * (1 - mask_AB)
+        lab[:, 1:] = AB
+        return lab
 
     def load_image_train_crop(self, dom, idx, crop_pos_h, crop_pos_w):
         path = self.paths[dom][idx]
@@ -104,7 +142,8 @@ class EBGCDataset(BaseDataset):
         edge_map_crop = edge_map_crop / 255.0
         seg_mask_crop = np.asarray(Image.fromarray(seg_mask_crop), dtype=np.int64)
 
-        return img_res, path, torch.tensor(edge_map_crop), seg_mask_crop.copy()
+        return img_res, torch.tensor(edge_map_crop), seg_mask_crop.copy()
+
 
     def count_class_ratio(self, input_mask):
         count = np.zeros((1, self.num_class))
@@ -136,9 +175,10 @@ class EBGCDataset(BaseDataset):
     def __getitem__(self, index):
         if not self.opt.isTrain:
             if self.opt.serial_test:
-                for d,s in enumerate(self.sizes):
+                for d, s in enumerate(self.sizes):
                     if index < s:
-                        DA = d; break
+                        DA = d;
+                        break
                     index -= s
                 index_A = index
             else:
@@ -150,7 +190,7 @@ class EBGCDataset(BaseDataset):
         else:
             # Choose two of our domains to perform a pass on
             # DA, DB = random.sample(range(len(self.dirs)), 2) #########
-            DA, DB = 0, 1
+            DA, DB, DC, DFus = 0, 1, 2, 3
             with open(self.FB_Sample_Vis_txt, 'r') as FGsampVis:
                 if 'True' in FGsampVis.read():
                     # print('DataLoader sampling FG is True.')
@@ -168,14 +208,14 @@ class EBGCDataset(BaseDataset):
                         pos_w = int(line_content_split[2]) - 1
                         index_A = self.paths[DA].index(temp_img_path)
 
-                    A_img, A_path, edge_map_A, seg_mask_A = self.load_image_train_crop(DA, index_A, pos_h, pos_w)
-                    bundle = {'A': A_img, 'DA': DA, 'path': A_path, 'EMA':edge_map_A, 'SMA':seg_mask_A}
+                    A_img, edge_map_A, seg_mask_A = self.load_image_train_crop(DA, index_A, pos_h, pos_w)
+                    bundle = {'A': A_img, 'DA': DA, 'EMA': edge_map_A, 'SMA': seg_mask_A}
 
                 else:
                     index_A = random.randint(0, self.sizes[DA] - 1)
-                    A_img, A_path, edge_map_A, seg_mask_A = self.load_image_train(DA, index_A)
-                    bundle = {'A': A_img, 'DA': DA, 'path': A_path, 'EMA':edge_map_A, 'SMA':seg_mask_A}
-                
+                    A_img, edge_map_A, seg_mask_A = self.load_image_train(DA, index_A)
+                    bundle = {'A': A_img, 'DA': DA, 'EMA': edge_map_A, 'SMA': seg_mask_A}
+
                 with open(self.FB_Sample_IR_txt, 'r') as FGsampIR:
                     if 'True' in FGsampIR.read():
                         # print('DataLoader sampling FG is True.')
@@ -193,20 +233,20 @@ class EBGCDataset(BaseDataset):
                             pos_w_B = int(line_content_split_B[2]) - 1
                             index_B = self.paths[DB].index(temp_img_path_B)
 
-                        B_img, _, edge_map_B, seg_mask_B = self.load_image_train_crop(DB, index_B, pos_h_B, pos_w_B)
+                        B_img, edge_map_B, seg_mask_B = self.load_image_train_crop(DB, index_B, pos_h_B, pos_w_B)
+                        C_img, edge_map_B, seg_mask_B = self.load_image_train_crop(DC, index_B, pos_h_B, pos_w_B)
                         # bundle = {'B': B_img, 'DB': DB, 'path': B_path, 'EMB':edge_map_B, 'SMB':seg_mask_B}
 
                     else:
                         index_B = random.randint(0, self.sizes[DB] - 1)
-                        B_img, _, edge_map_B, seg_mask_B = self.load_image_train(DB, index_B)
+                        B_img, C_img, Fus_img, edge_map_B, seg_mask_B = self.load_image_train(DB, index_B, sup_dom=DC, crop=True)
                         # bundle = {'B': B_img, 'DB': DB, 'path': B_path, 'EMB':edge_map_B, 'SMB':seg_mask_B}
-                
-                
-                bundle.update( {'B': B_img, 'DB': DB, 'EMB':edge_map_B, 'SMB':seg_mask_B} )
-        
+                    # C_img = self.load_image(DC, index_B)[0]
+
+                bundle.update({'B': B_img, 'DB': DB, 'Fus': Fus_img,
+                               'EMB': edge_map_B, 'SMB': seg_mask_B, 'C': C_img, 'DC': DC, 'DFus': DFus})
 
         return bundle
-
 
     def __len__(self):
         if self.opt.isTrain:

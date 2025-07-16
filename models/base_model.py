@@ -40,7 +40,7 @@ class BaseModel():
 
     # helper saving function that can be used by subclasses
     def save_network(self, network, network_label, epoch, gpu_ids):
-        save_filename = '%d_net_%s' % (epoch, network_label)
+        save_filename = f'{epoch}_net_{network_label}'
         save_path = os.path.join(self.save_dir, save_filename)
         network.save(save_path)
         if gpu_ids and torch.cuda.is_available():
@@ -48,9 +48,13 @@ class BaseModel():
 
     # helper loading function that can be used by subclasses
     def load_network(self, network, network_label, epoch):
-        save_filename = '%d_net_%s' % (epoch, network_label)
-        save_path = os.path.join(self.save_dir, save_filename)
+        if isinstance(epoch, (str, int)):
+            save_filename = f'{epoch}_net_{network_label}'
+            save_path = os.path.join(self.save_dir, save_filename)
+        else:
+            save_filename = [f'{e}_net_{network_label}' for e in epoch]
+            save_path = [os.path.join(self.save_dir, fn) for fn in save_filename]
         network.load(save_path)
 
-    def update_learning_rate():
-        pass
+    def update_learning_rate(self, lr):
+        self.lr = lr

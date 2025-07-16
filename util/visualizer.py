@@ -74,7 +74,7 @@ class Visualizer():
         if self.use_html: # save images to a html file
             for label, image_numpy in visuals.items():
                 # print(type(image_numpy))
-                img_path = os.path.join(self.img_dir, 'epoch%.3d_%s.png' % (epoch, label))
+                img_path = os.path.join(self.img_dir, f'{label}.png')
                 util.save_image(image_numpy, img_path)
             # update website
             webpage = html.HTML(self.web_dir, 'Experiment name = %s' % self.name, reflesh=1)

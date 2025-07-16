@@ -24,6 +24,7 @@ vis_buffer = []
 for i, data in enumerate(dataset):
     if not opt.serial_test and i >= opt.how_many:
         break
+    data['DA'] += 1
     model.set_input(data)
     model.test_seg(seg_only=True)
     visuals = model.get_current_visuals3(testing=True)

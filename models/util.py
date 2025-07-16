@@ -8,6 +8,7 @@ import os
 import collections
 import torch.nn.functional as F
 
+
 # Converts a Tensor into a Numpy array
 # |imtype|: the desired type of the converted numpy array
 def tensor2im_old(image_tensor, imtype=np.uint8):
@@ -17,6 +18,7 @@ def tensor2im_old(image_tensor, imtype=np.uint8):
         image_numpy = np.dstack([image_numpy]*3)
     return image_numpy.astype(imtype)
 
+
 def tensor2im(image_tensor, imtype=np.uint8):
     img = image_tensor[0].cpu().float().numpy()
     # image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0
@@ -25,6 +27,7 @@ def tensor2im(image_tensor, imtype=np.uint8):
     if img.shape[2] < 3:
         img = np.dstack([img]*3)
     return img
+
 
 def gkern_2d(size=5, sigma=3):
     # Create 2D gaussian kernel
@@ -67,11 +70,13 @@ def info(object, spacing=10, collapse=1):
                       processFunc(str(getattr(object, method).__doc__)))
                      for method in methodList]) )
 
+
 def varname(p):
     for line in inspect.getframeinfo(inspect.currentframe().f_back)[3]:
         m = re.search(r'\bvarname\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)', line)
         if m:
             return m.group(1)
+
 
 def print_numpy(x, val=True, shp=False):
     x = x.astype(np.float64)
@@ -111,6 +116,7 @@ for i in range(zero_pad):
     palette.append(0)
 for j in range(3):
     palette.append(255)
+
 
 def colorize_mask(pred_tensor):
     if len(pred_tensor.shape) == 4:
