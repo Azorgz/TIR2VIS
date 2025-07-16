@@ -1,5 +1,5 @@
 #!/bin/bash
-OAR -n tir2vis
+#OAR -n tir2vis
 #OAR -l /nodes=1/gpu=1 --project test -p "gpumodel='A100'" "nvidia-smi -L"
 #OAR --stdout logs/%jobid%.out
 #OAR --stderr logs/%jobid%.err
