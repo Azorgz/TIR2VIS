@@ -1,4 +1,6 @@
 import os.path, glob
+import socket
+
 import numpy as np
 import oyaml
 import torchvision.transforms as transforms
@@ -34,7 +36,8 @@ class EBGCDataset(BaseDataset):
             self.FB_Sample_Vis_txt = os.path.join(opt.dataroot, opt.FB_Sample_Vis_txt)
             self.FB_Sample_IR_txt = os.path.join(opt.dataroot, opt.FB_Sample_IR_txt)
             self.num_class = opt.num_class
-            with open('/home/godeta/PycharmProjects/TIR2VIS/datasets/FLIR/FLIR_datasets/crop.yaml', 'r') as f:
+            crop_path = '/silenus/PROJECTS/pr-remote-sensing-1a/godeta/FLIR/FLIR_datasets/crop.yaml' if not 'laptop' in socket.gethostname() else '/home/godeta/PycharmProjects/TIR2VIS/datasets/FLIR/FLIR_datasets/crop.yaml'
+            with open(crop_path, 'r') as f:
                 self.crop_xxyy = oyaml.safe_load(f)['crop']
         else:
             datapath = [opt.dataroot]
