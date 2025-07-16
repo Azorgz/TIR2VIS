@@ -32,11 +32,11 @@ class TrainOptions(BaseOptions):
 
         self.parser.add_argument('--continue_train', type=bool, default=False,
                                  help='continue training: load the latest model')
-        self.parser.add_argument('--simple_train', type=bool, default=True,
+        self.parser.add_argument('--simple_train', type=bool, default=False,
                                  help='continue training: load the latest model')
         self.parser.add_argument('--which_epoch', type=int, default=0,
                                  help='which epoch to load if continuing training')
-        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default=['latest', 'latest', 'latest', 'latest', 'latest', 'latest', -1],
+        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default='latest', #['latest', 'latest', 'latest', 'latest', 'latest', 'latest', -1],
                                  help='which epoch to load if continuing training')
         self.parser.add_argument("--partial_train", type=dict, default=None, #{'G': [0, 2, 3, 5], 'D': [0, 2], 'S': [0, 2]},
                                  help="Which domains of G - D - S are trained in ["
