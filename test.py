@@ -22,20 +22,22 @@ from models.utils_fct import detect_blob
 # from ImagesCameras.tools.misc import time_fct
 
 
-color_path = '/home/godeta/PycharmProjects/TIR2VIS/datasets/FLIR/FLIR_datasets/trainC/'
-# path = '/home/godeta/PycharmProjects/TIR2VIS/datasets/FLIR/FLIR_datasets/trainC/FLIR_00137.png'
-list_im_color = [color_path + p for p in sorted(os.listdir(color_path))]
-for path in list_im_color:
-    col = im(path)
-    gray = col.GRAY()
-    col_max, clr = col.max(dim=1, keepdim=True)
-    # mask = detect_blob(col.max(dim=1)[0].squeeze().numpy(), min_radius=1, scale_blob=4)
-    th = 0.08
-    mask = (gray >= th*3) * (gray <= 1-th) + (col_max > gray * math.sqrt(2))
-    mask = gaussian_blur(mask*1., [13, 13], [5, 5])
-    filt_col = col * mask
-    col.hstack(filt_col).show()
+# color_path = '/home/godeta/PycharmProjects/TIR2VIS/datasets/FLIR/FLIR_datasets/trainC/'
+# # path = '/home/godeta/PycharmProjects/TIR2VIS/datasets/FLIR/FLIR_datasets/trainC/FLIR_00137.png'
+# list_im_color = [color_path + p for p in sorted(os.listdir(color_path))]
+# for path in list_im_color:
+#     col = im(path)
+#     gray = col.GRAY()
+#     col_max, clr = col.max(dim=1, keepdim=True)
+#     # mask = detect_blob(col.max(dim=1)[0].squeeze().numpy(), min_radius=1, scale_blob=4)
+#     th = 0.08
+#     mask = (gray >= th*3) * (gray <= 1-th) + (col_max > gray * math.sqrt(2))
+#     mask = gaussian_blur(mask*1., [13, 13], [5, 5])
+#     filt_col = col * mask
+#     col.hstack(filt_col).show()
 
+for i in range(100):
+    print(i)
 
 # ir_path = '/home/godeta/PycharmProjects/TIR2VIS/datasets/FLIR/FLIR_datasets/trainB/'
 #

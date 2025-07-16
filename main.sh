@@ -5,6 +5,5 @@
 #OAR --stdout logs/%jobid%.out
 #OAR --stderr logs/%jobid%.err
 #OAR --project pr-remote-sensing-1a
-conda init
-conda activate Image
-python ~/TIR2VIS/train.py
+
+python ~/TIR2VIS/test.py
