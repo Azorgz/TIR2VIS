@@ -30,13 +30,13 @@ class TrainOptions(BaseOptions):
         BaseOptions.initialize(self)
         self.isTrain = True
 
-        self.parser.add_argument('--continue_train', type=bool, default=False,
+        self.parser.add_argument('--continue_train', type=bool, default=True,
                                  help='continue training: load the latest model')
         self.parser.add_argument('--simple_train', type=bool, default=False,
                                  help='continue training: load the latest model')
-        self.parser.add_argument('--which_epoch', type=int, default=0,
+        self.parser.add_argument('--which_epoch', type=int, default=35,
                                  help='which epoch to load if continuing training')
-        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default='latest', #[35, 35, 35, 35, 35, 35, -1],
+        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default='latest',#[35, 35, 35, 35, 35, 35, 'latest'],
                                  help='which epoch to load if continuing training')
         self.parser.add_argument("--partial_train", type=dict, default=None, #{'G': [0, 2, 3, 5], 'D': [0, 2], 'S': [0, 2]},
                                  help="Which domains of G - D - S are trained in ["
@@ -102,6 +102,8 @@ class TrainOptions(BaseOptions):
                                  help='weight for color consistence loss')
         self.parser.add_argument('--lambda_sga', type=float, default=0.5,
                                  help='weight for gradient orientation consistence loss')
+
+        # Epoch schedule
         self.parser.add_argument('--SGA_start_epoch', type=int, default=0,
                                  help='# of epochs at starting gradient orientation consistence loss')
         self.parser.add_argument('--SGA_fullload_epoch', type=int, default=0,
@@ -125,12 +127,11 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument("--partial_train_stop", type=int, default=100,
                                  help="Epoch to stop partial training of G.")
 
-
-        self.parser.add_argument('--save_epoch_freq', type=int, default=1,
+        self.parser.add_argument('--save_epoch_freq', type=int, default=5,
                                  help='frequency of saving checkpoints at the end of epochs')
-        self.parser.add_argument('--save_step_latest', type=int, default=500,
+        self.parser.add_argument('--save_step_latest', type=int, default=2000,
                                  help='frequency of saving checkpoints at the end of epochs')
-        self.parser.add_argument('--display_freq', type=int, default=100,
+        self.parser.add_argument('--display_freq', type=int, default=2000,
                                  help='frequency of showing training results on screen')
         self.parser.add_argument('--print_freq', type=int, default=2000,
                                  help='frequency of showing training results on console')

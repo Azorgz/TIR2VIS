@@ -12,7 +12,7 @@ class BaseOptions():
         self.parser.add_argument('--name', default='FoalGAN_FLIR', type=str, help='name of the experiment. It decides where to store samples and models')
         self.parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
 
-        self.parser.add_argument('--dataroot', default='datasets/FLIR/', type=str, help='path to images (should have subfolders trainA, trainB, valA, valB, etc)')
+        self.parser.add_argument('--dataroot', default='./datasets/FLIR/', type=str, help='path to images (should have subfolders trainA, trainB, valA, valB, etc)')
         self.parser.add_argument('--n_domains', default=3, type=int, help='Number of domains to transfer among')
         self.parser.add_argument('--num_class', type=int, default=19, help='number of segmentation class')
 
@@ -21,7 +21,7 @@ class BaseOptions():
         self.parser.add_argument('--pedestrian_color', type=str, default='red', help='The color of the pedestrian on the generated day image')
         self.parser.add_argument('--no_flip', action='store_true', help='if specified, do not flip the images for data augmentation')
 
-        self.parser.add_argument('--loadSize', type=int, default=286, help='scale images to this size')
+        self.parser.add_argument('--loadSize', type=int, default=288, help='scale images to this size')
         self.parser.add_argument('--fineSize', type=int, default=256, help='then crop to this size')
 
         self.parser.add_argument('--batchSize', type=int, default=1, help='input batch size')

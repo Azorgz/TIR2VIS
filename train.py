@@ -2,7 +2,7 @@ import torch
 import time
 
 from tqdm import tqdm
-
+import socket
 from models.combogan_model import GanColorCombo
 from options.train_options import TrainOptions
 from data.data_loader import DataLoader
@@ -11,7 +11,8 @@ from util.visualizer import Visualizer
 torch.set_num_threads(1)
 
 opt = TrainOptions().parse()
-# machine_name =
+dataroot = '/silenus/PROJECTS/pr-remote-sensing-1a/godeta/FLIR/' if not 'laptop' in socket.gethostname() else None
+opt.dataroot = dataroot if dataroot else opt.dataroot
 dataset = DataLoader(opt)
 print('# training images = %d' % len(dataset))
 model = GanColorCombo(opt)
@@ -20,7 +21,6 @@ total_steps = 0
 dataset_size = len(dataset) // opt.batchSize
 
 # Update initially if continuing
-# if opt.which_epoch > 0:
 model.update_hyperparams(opt.which_epoch)
 
 for epoch in range(opt.which_epoch + 1, opt.niter + opt.niter_decay + 1):
