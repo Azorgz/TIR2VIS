@@ -11,8 +11,8 @@ from util.visualizer import Visualizer
 torch.set_num_threads(1)
 
 opt = TrainOptions().parse()
-dataroot = '/silenus/PROJECTS/pr-remote-sensing-1a/godeta/FLIR/' if not 'laptop' in socket.gethostname() else None
-opt.dataroot = dataroot if dataroot else opt.dataroot
+opt.dataroot = '/silenus/PROJECTS/pr-remote-sensing-1a/godeta/FLIR/' if not 'laptop' in socket.gethostname() else opt.dataroot
+opt.checkpoints_dir = '/silenus/PROJECTS/pr-remote-sensing-1a/godeta/checkpoints/' if not 'laptop' in socket.gethostname() else opt.checkpoints_dir
 dataset = DataLoader(opt)
 print('# training images = %d' % len(dataset))
 model = GanColorCombo(opt)
