@@ -1,6 +1,8 @@
 #!/bin/bash
 #OAR -n tir2vis
-#OAR -l /nodes=1/gpu=1 --project pr-remote-sensing-1a -p "gpumodel='A100'" "nvidia-smi -L"
+#OAR -l /nodes=1/gpu=1
+#OAR -p "gpumodel='A100'"
 #OAR --stdout logs/%jobid%.out
 #OAR --stderr logs/%jobid%.err
+#OAR --project pr-remote-sensing-1a
 python ~/TIR2VIS/train.py
