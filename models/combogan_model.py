@@ -849,6 +849,8 @@ class GanColorCombo(ComboGANModel):
             {'G': [i for i in range(len(self.netG.optimizers))],
              'D': [i for i in range(len(self.netD.optimizers))],
              'S': [i for i in range(len(self.netS.optimizers))]}
+        if opt.simple_train:
+            self.partial_train_net = {'G': [0, 1, 3, 4], 'D': [0, 1], 'S': [0, 1]}
         self.rec_A, self.rec_B, self.rec_C, self.rec_BC = None, None, None, None
         self.pedestrian_color = mcolors.CSS4_COLORS[opt.pedestrian_color]
         self.alternate = 0
@@ -976,10 +978,10 @@ class GanColorCombo(ComboGANModel):
         rec_encoded_BC = self.netG.encode(self.fake_BC.detach(), self.DC)
         self.rec_B_BC = self.netG.decode(rec_encoded_BC, self.DB)
         self.rec_C_BC = self.netG.decode(rec_encoded_BC, self.DC)
-        # self.loss_cycle[self.Fus] += loss_cycle(self.rec_C_BC * mask_L_C, self.real_C * mask_L_C) \
-        #     if self.cond('DC', 'EC', 'Fus') else self.null
-        # self.loss_cycle[self.Fus] += loss_cycle(self.rec_B_BC, self.real_B) \
-        #     if self.cond('EC', 'Fus') else self.null
+        self.loss_cycle[self.Fus] += loss_cycle(self.rec_C_BC * self.mask, self.real_C * self.mask) \
+            if self.cond('DC', 'EC', 'Fus') else self.null
+        self.loss_cycle[self.Fus] += loss_cycle(self.rec_B_BC, self.real_B) \
+            if self.cond('EC', 'Fus') else self.null
 
         # Forward cycle loss for domain C
         rec_encoded_A_C = self.netG.encode(self.fake_A_C, self.DA)
@@ -1323,455 +1325,333 @@ class GanColorCombo(ComboGANModel):
 
         loss_G.backward()
 
-    # def backward_G_simple(self):
-    #     encoded_A = self.netG.encode(self.real_A, self.DA)
-    #     encoded_B = self.netG.encode(self.real_B, self.DB)
-    #     encoded_C = self.netG.encode(self.real_C, self.DC)
-    #     encoded_BC = self.netG.fusion_features(encoded_B, encoded_C)
-    #
-    #     encoded_A = encoded_A.detach() if not self.cond('EA') else encoded_A
-    #     encoded_B = encoded_B.detach() if not self.cond('EB') else encoded_B
-    #     encoded_C = encoded_C.detach() if not self.cond('EC') else encoded_C
-    #     encoded_BC = encoded_BC.detach() if not self.cond('Fus') else encoded_BC
-    #
-    #     real_C_max = ((self.real_C + 1) / 2).max(dim=1, keepdim=True)[0].expand(1, 3, *self.real_C.shape[-2:])
-    #     mask_HL_C = real_C_max <= self.opt.vis_night_hl_th
-    #     mask_LL_C = real_C_max >= 1 - self.opt.vis_night_hl_th
-    #     mask_L_C = mask_HL_C * mask_LL_C
-    #
-    #     # Optional identity "autoencode" loss ###############################
-    #     if self.lambda_idt > 0:
-    #         # Same encoder and decoder should recreate image
-    #         idt_A = self.netG.decode(encoded_A, self.DA)
-    #         loss_idt_A = self.criterionIdt(idt_A, self.real_A)
-    #         idt_B = self.netG.decode(encoded_B, self.DB)
-    #         loss_idt_B = self.criterionIdt(idt_B, self.real_B)
-    #         loss_idt = loss_idt_A + loss_idt_B
-    #     else:
-    #         loss_idt = self.null
-    #     # GAN loss ##############################################################
-    #     self.loss_G = [0, 0, 0, 0]
-    #     # D_A(G_A(A))
-    #     self.fake_B = self.netG.decode(encoded_A, self.DB)
-    #     self.loss_G[1] += self.criterionGAN(self.pred_real_B, self.netD.forward(self.fake_B, self.DB), False) \
-    #         if (self.cond('EA', 'DB')) else self.null
-    #     # D_C / D_B (G_A(A))
-    #     B_A, C_A = self.netG.separation_features(encoded_A)
-    #     self.fake_C_A = self.netG.decode(C_A, self.DC)
-    #     self.fake_B_A = self.netG.decode(B_A, self.DC)
-    #     self.loss_G[2] += self.criterionGAN(self.pred_real_C, self.netD.forward(self.fake_C_A, self.DC), False) \
-    #         if (self.cond('DC', 'EA', 'Fus')) else self.null
-    #     self.loss_G[1] += self.criterionGAN(self.pred_real_B, self.netD.forward(self.fake_B_A, self.DB), False) \
-    #         if (self.cond('DB', 'EA', 'Fus')) else self.null
-    #     # D_B(G_B(B))
-    #     self.fake_A = self.netG.decode(encoded_B, self.DA)
-    #     self.loss_G[0] += self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A, self.DA), False) \
-    #         if (self.cond('DA', 'EB', 'EC', 'Fus')) else self.null
-    #
-    #     # Color Loss  ###########################################################
-    #     self.loss_color = self.criterionColor(self.fake_A, self.real_C, self.SegMask_B)
-    #
-    #     #  Cycle Loss ############################################################
-    #     self.loss_cycle = {self.DA: 0, self.DB: 0, self.DC: 0, self.Fus: 0}
-    #     loss_cycle = lambda x, y: (self.criterionCycle(x, y) * self.lambda_cyc +
-    #                                self.criterionSSIM((x + 1) / 2, (y + 1) / 2) * self.lambda_ssim)
-    #
-    #     # Forward cycle loss for domain C
-    #     rec_encoded_BC = self.netG.encode(self.fake_A, self.DA)
-    #     rec_encoded_B, rec_encoded_C = self.netG.separation_features(rec_encoded_BC)
-    #     self.rec_C_A_BC = self.netG.decode(rec_encoded_C, self.DC)
-    #     self.rec_B_A_BC = self.netG.decode(rec_encoded_B, self.DB)
-    #     self.loss_cycle[self.DC] = self.criterionColor(self.rec_C_A_BC, self.real_C, self.SegMask_B)
-    #     self.loss_cycle[self.DC] += loss_cycle(self.rec_B_A_BC, self.real_B) if self.cond('EC', 'Fus') else self.null
-    #
-    #     # Fusion cycle loss
-    #     rec_encoded_BC = self.netG.encode(self.fake_BC, self.DC)
-    #     rec_encoded_B, rec_encoded_C = self.netG.separation_features(rec_encoded_BC)
-    #     self.rec_B_BC = self.netG.decode(rec_encoded_B, self.DB)
-    #     self.rec_C_BC = self.netG.decode(rec_encoded_C, self.DC)
-    #     self.loss_cycle[self.Fus] = loss_cycle(self.rec_C_BC * mask_HL_C, self.real_C * mask_HL_C)
-    #     self.loss_cycle[self.Fus] += loss_cycle(self.rec_B_BC, self.real_B) if self.cond('EC', 'Fus') else self.null
-    #
-    #     rec_encoded_A_C = self.netG.encode(self.fake_A_C, self.DA)
-    #     self.rec_C_A = self.netG.decode(rec_encoded_A_C, self.DC)
-    #     self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A * mask_HL_C, self.real_C * mask_HL_C) if self.cond('EC',
-    #                                                                                                            'DC') else self.null
-    #
-    #     rec_encoded_B_C = self.netG.encode(self.fake_B_C, self.DB)
-    #     self.rec_C_B = self.netG.decode(rec_encoded_B_C, self.DC)
-    #     self.loss_cycle[self.DC] += loss_cycle(self.rec_C_B * mask_HL_C, self.real_C * mask_HL_C) if self.cond('EC',
-    #                                                                                                            'DC') else self.null
-    #
-    #     self.loss_tv = {self.DC: 0, self.Fus: 0}
-    #     # Optional total variation loss on generate fake images, added by lfy
-    #     self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_A_C) if self.cond('EC') else self.null
-    #     self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_B_C) if self.cond('EC') else self.null
-    #     self.loss_tv[self.Fus] += self.lambda_tv * self.criterionTV(self.fake_A_BC) if self.cond('Fus') else self.null
-    #     self.loss_tv[self.Fus] += self.lambda_tv * self.criterionTV(self.fake_BC) if self.cond('Fus') else self.null
-    #
-    #     # Optional semantic consistency loss on encoded and rec_encoded features, added by lfy
-    #     # "Random size for segmentation network training. Then, retain original image size."
-    #     if self.netS_freezing_idx == 0.0:
-    #         rand_scale = torch.randint(32, 80, (1, 1))  # 32, 80
-    #         rand_size = int(rand_scale.item() * 4)
-    #         rand_size_B = int(rand_scale.item() * 4)
-    #         rand_size_C = int(rand_scale.item() * 4)
-    #     else:
-    #         rand_size = rand_size_B = rand_size_C = 256
-    #
-    #     SegMask_A_s = F.interpolate(self.SegMask_A.unsqueeze(0).float(), size=[rand_size, rand_size], mode='nearest')
-    #     SegMask_B_s = F.interpolate(self.SegMask_B.unsqueeze(0).float(), size=[rand_size, rand_size], mode='nearest')
-    #
-    #     if self.lambda_acl > 0.0:
-    #         real_BC_s = F.interpolate(self.fake_BC, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
-    #         real_BC_pred, _ = self.netS.forward(real_BC_s, self.DC)
-    #         real_BC_pred_d = real_BC_pred.detach()
-    #     if 20 <= self.epoch < 30 or self.lambda_acl > 0.0:  # epoch 20-30
-    #         real_C_s = F.interpolate(self.real_C, size=[rand_size_C, rand_size_C], mode='bilinear', align_corners=False)
-    #         real_C_pred, _ = self.netS.forward(real_C_s, self.DC)
-    #     elif 40 > self.epoch >= 30:
-    #         if not self.lambda_acl > 0.0:
-    #             real_BC_s = F.interpolate(self.fake_BC, size=[rand_size, rand_size], mode='bilinear',
-    #                                       align_corners=False)
-    #             real_BC_pred, _ = self.netS.forward(real_BC_s, self.DC)
-    #             real_BC_pred_d = real_BC_pred.detach()
-    #         real_C_s = F.interpolate(self.real_C, size=[rand_size_C, rand_size_C], mode='bilinear', align_corners=False)
-    #         real_C_pred, _ = self.netS.forward(real_C_s, self.DC)
-    #         #
-    #         real_B_s = F.interpolate(self.real_B, size=[rand_size_B, rand_size_B], mode='bilinear', align_corners=False)
-    #         real_B_pred, _ = self.netS.forward(real_B_s, self.DB)
-    #         #
-    #         fake_A_BC_s = F.interpolate(self.fake_A_BC, size=[rand_size, rand_size], mode='bilinear',
-    #                                     align_corners=False)
-    #         fake_A_BC_pred, _ = self.netS.forward(fake_A_BC_s, self.DB)
-    #         fake_A_BC_pred_d = fake_A_BC_pred.detach()
-    #         #
-    #         fake_A_C_s = F.interpolate(self.fake_A_C, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
-    #         fake_A_C_pred, _ = self.netS.forward(fake_A_C_s, self.DA)
-    #         fake_A_C_pred_d = fake_A_C_pred.detach()
-    #         #
-    #         fake_B_C_s = F.interpolate(self.fake_B_C, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
-    #         fake_B_C_pred, _ = self.netS.forward(fake_B_C_s, self.DB)
-    #         fake_B_C_pred_d = fake_B_C_pred.detach()
-    #     elif 75 > self.epoch >= 40:
-    #         if not self.lambda_acl > 0.0:
-    #             real_BC_s = F.interpolate(self.fake_BC, size=[rand_size, rand_size], mode='bilinear',
-    #                                       align_corners=False)
-    #             real_BC_pred, _ = self.netS.forward(real_BC_s, self.DC)
-    #             real_BC_pred_d = real_BC_pred.detach()
-    #         real_C_s = F.interpolate(self.real_C, size=[rand_size_C, rand_size_C], mode='bilinear', align_corners=False)
-    #         real_C_pred, _ = self.netS.forward(real_C_s, self.DC)
-    #         #
-    #         real_B_s = F.interpolate(self.real_B, size=[rand_size_B, rand_size_B], mode='bilinear', align_corners=False)
-    #         real_B_pred, _ = self.netS.forward(real_B_s, self.DB)
-    #         #
-    #         fake_A_BC_s = F.interpolate(self.fake_A_BC, size=[rand_size, rand_size], mode='bilinear',
-    #                                     align_corners=False)
-    #         fake_A_BC_pred, _ = self.netS.forward(fake_A_BC_s, self.DB)
-    #         fake_A_BC_pred_d = fake_A_BC_pred.detach()
-    #         #
-    #         fake_A_C_s = F.interpolate(self.fake_A_C, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
-    #         fake_A_C_pred, _ = self.netS.forward(fake_A_C_s, self.DA)
-    #         fake_A_C_pred_d = fake_A_C_pred.detach()
-    #         #
-    #         fake_B_C_s = F.interpolate(self.fake_B_C, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
-    #         fake_B_C_pred, _ = self.netS.forward(fake_B_C_s, self.DB)
-    #         fake_B_C_pred_d = fake_B_C_pred.detach()
-    #         #
-    #         fake_A_s = F.interpolate(self.fake_A, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
-    #         fake_A_pred, _ = self.netS.forward(fake_A_s, self.DA)
-    #         fake_A_pred_d = fake_A_pred.detach()
-    #
-    #     if self.DB_GT_update_idx == 0.0:  # epoch 0-40
-    #         self.loss_S_rec = {self.DC: 0.0, self.Fus: 0.0}
-    #         self.loss_S_enc = {self.DC: 0.0, self.Fus: 0.0}
-    #         if self.DA_GT_update_idx != 1.0:
-    #             ####0-20 epoch, self.lambda_sc is set to 0.
-    #             ####20-30 epoch, training semantic segmentation networks for domain C without updating segmentation GT
-    #             if self.lambda_sc > 0.0 and self.cond('C', dom='S'):
-    #                 seg_loss = self.update_class_criterion(SegMask_B_s[:, 0].long())
-    #                 self.loss_S_enc[self.DC] = self.lambda_sc * seg_loss(real_C_pred, SegMask_B_s[:, 0].long())
-    #             seg_mask_C = SegMask_B_s.long().detach()
-    #         else:
-    #             ####30-40 epoch, training semantic segmentation networks for domain C with updating segmentation GT,
-    #             ###and training semantic segmentation networks for domain B/C by pseudo-labels of domain A and pseudo-NTIR images
-    #             SegMask_C_B = self.UpdateVisGTv2(self.fake_B_C.detach(), SegMask_B_s[:, 0].long(), 0.25)
-    #             seg_mask_C = torch.where(
-    #                 F.interpolate(mask_HL_C[:, 0:1].float(), size=[rand_size, rand_size], mode='nearest').squeeze(
-    #                     0) == 1., SegMask_C_B, 255.)
-    #             self.seg_loss = self.update_class_criterion(seg_mask_C.long())
-    #             ####
-    #             if self.cond('C', dom='S'):
-    #                 self.loss_S_enc[self.DC] = self.lambda_sc * (self.seg_loss(real_C_pred, seg_mask_C.long()) +
-    #                                                              0.5 * self.criterionSemEdge(real_C_pred,
-    #                                                                                          seg_mask_C.long(), 19,
-    #                                                                                          self.gpu_ids[0]))
-    #
-    #             self.loss_S_rec[self.Fus] = self.lambda_sc * self.seg_loss(real_BC_pred_d, seg_mask_C.long())
-    #             self.loss_S_rec[self.DC] = self.lambda_sc * self.seg_loss(fake_B_C_pred_d, seg_mask_C.long())
-    #
-    #             self.loss_S_rec[self.Fus] += self.lambda_sc * self.seg_loss(fake_A_BC_pred_d,
-    #                                                                         seg_mask_C.long()) if self.cond('EC',
-    #                                                                                                         'Fus') else self.null
-    #             self.loss_S_rec[self.DC] += self.lambda_sc * self.seg_loss(fake_A_C_pred_d,
-    #                                                                        seg_mask_C.long()) if self.cond(
-    #                 'EC') else self.null
-    #
-    #     else:  # epoch 40-100
-    #         if self.netS_freezing_idx < 1:
-    #             ####40-75 epoch, training semantic segmentation networks for domain C with updating segmentation GT,
-    #             ####and training semantic segmentation networks for domain B by both real-NTIR and pseudo-NTIR images.
-    #             SegMask_C_B = self.UpdateVisGTv2(self.fake_B_C.detach(), SegMask_B_s[:, 0].long(), 0.25)
-    #             SegMask_B_update = self.UpdateIRGTv1(real_B_pred.detach(), fake_A_pred_d,
-    #                                                  255 * torch.ones_like(SegMask_A_s[:, 0].long()), real_B_s,
-    #                                                  self.IR_prob_th)
-    #             seg_mask_C = torch.where(SegMask_B_update == SegMask_C_B, SegMask_C_B, 255.)
-    #             self.seg_loss = self.update_class_criterion(seg_mask_C.long())
-    #             self.loss_S_enc[self.DC] = self.lambda_sc * (
-    #                     self.seg_loss(real_BC_pred, seg_mask_C.long()) + \
-    #                     0.5 * self.criterionSemEdge(real_BC_pred, seg_mask_C.long(), 19, self.gpu_ids[0]))
-    #
-    #             self.loss_S_rec[self.DC] = self.lambda_sc * self.seg_loss(fake_B_pred, seg_mask_C.long())
-    #             SegMask_B_update = self.UpdateIRGTv2(real_B_pred.detach(), fake_A_pred_d,
-    #                                                  SegMask_B_s[:, 0].long(), real_B_s, self.IR_prob_th)
-    #             seg_loss_B = self.update_class_criterion(SegMask_B_update.long())
-    #
-    #             self.loss_S_enc[self.DB] = self.lambda_sc * seg_loss_B(real_B_pred, SegMask_B_update.long())
-    #             self.loss_S_enc[self.DC] = self.lambda_sc * seg_loss_B(real_C_pred, SegMask_B_update.long())
-    #
-    #         else:
-    #             ####75-100 epoch, constraining semantic consistency after fixing segmentation networks of the two domains.
-    #             self.loss_S_enc[self.DA] = 0.0
-    #             self.loss_S_enc[self.DB] = 0.0
-    #             SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
-    #             seg_loss_A = self.update_class_criterion(SegMask_A_update.long())
-    #             self.loss_S_rec[self.DA] = self.lambda_sc * seg_loss_A(fake_B_pred, SegMask_A_update.long())
-    #             SegMask_B_update = self.UpdateIRGTv2(real_B_pred.detach(), fake_A_pred_d,
-    #                                                  SegMask_B_s[:, 0].long(), real_B_s, self.IR_prob_th)
-    #             SegMask_B_update2 = F.interpolate(SegMask_B_update.expand(1, 1, 256, 256).float(),
-    #                                               size=[rand_size, rand_size], mode='nearest')
-    #             seg_loss_B = self.update_class_criterion(SegMask_B_update2[:, 0].long())
-    #             self.loss_S_rec[self.DB] = self.lambda_sc * seg_loss_B(fake_A_pred, SegMask_B_update2[0].long())
-    #
-    #     # Optional Scale Robustness Loss on generated fake images, added by lfy
-    #     self.loss_SR = {self.DC: 0.0}
-    #     if self.DB_GT_update_idx > 100.0:
-    #         inv_idx = torch.rand(1)
-    #         if inv_idx > 0.5:
-    #             real_BC_ds = F.interpolate(self.fake_BC, size=[128, 128], mode='bilinear', align_corners=False)
-    #             encoded_BC_ds = self.netG.encode(real_BC_ds, self.DC)
-    #             encoded_B_ds, encoded_C_ds = self.netG.separation_features(encoded_BC_ds)
-    #             rec_C_ds = self.netG.decode(encoded_C_ds, self.DC)
-    #             rec_B_ds = self.netG.decode(encoded_B_ds, self.DB)
-    #             real_C_ds = F.interpolate(self.rec_C_BC, size=[128, 128], mode='bilinear', align_corners=False)
-    #             real_B_ds = F.interpolate(self.rec_B_BC, size=[128, 128], mode='bilinear', align_corners=False)
-    #         else:
-    #             real_BC_ds = F.interpolate(self.fake_BC, size=[384, 384], mode='bilinear', align_corners=False)
-    #             encoded_BC_ds = self.netG.encode(real_BC_ds, self.DC)
-    #             encoded_B_ds, encoded_C_ds = self.netG.separation_features(encoded_BC_ds)
-    #             rec_C_ds = F.interpolate(self.netG.decode(encoded_C_ds, self.DC), size=[256, 256],
-    #                                      mode='bilinear', align_corners=False)
-    #             rec_B_ds = F.interpolate(self.netG.decode(encoded_B_ds, self.DB), size=[256, 256],
-    #                                      mode='bilinear', align_corners=False)
-    #             real_C_ds = self.rec_C_BC
-    #             real_B_ds = self.rec_B_BC
-    #
-    #         self.loss_SR[self.DC] = self.lambda_cyc * self.L1(rec_C_ds, real_C_ds.detach()) + \
-    #                                 (self.criterionSSIM((rec_C_ds + 1) / 2, (real_C_ds.detach() + 1) / 2)) + \
-    #                                 self.lambda_cyc * self.L1(rec_B_ds, real_B_ds.detach()) + \
-    #                                 (self.criterionSSIM((rec_B_ds + 1) / 2, (real_B_ds.detach() + 1) / 2))
-    #
-    #     ########################
-    #
-    #     if self.lambda_acl > 0:  # epoch > 40
-    #         fake_C_Mask = F.interpolate(fake_C_pred_d.expand(1, 19, rand_size, rand_size).float(), size=[256, 256],
-    #                                     mode='bilinear', align_corners=False)
-    #         real_BC_Mask = F.interpolate(real_BC_pred_d.expand(1, 19, rand_size, rand_size).float(), size=[256, 256],
-    #                                      mode='bilinear', align_corners=False)
-    #         ##########Fake_IR_Composition, OAMix-TIR
-    #         FakeIR_FG_Mask, out_FG_FakeIR, out_FG_RealVis, FakeIR_FG_Mask_flip, out_FG_FakeIR_flip, out_FG_RealVis_flip, FakeIR_FG_Mask_ori, HL_Mask, ComIR_Light_Mask = \
-    #             self.get_FG_MergeMask(self.SegMask_A.detach(), fake_C_Mask, self.real_A, self.fake_B.detach(),
-    #                                   self.gpu_ids[0])
-    #         self.IR_com = self.get_IR_Com(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, out_FG_FakeIR, out_FG_FakeIR_flip,
-    #                                       self.real_B.detach(), seg_mask_C.detach(), HL_Mask)
-    #         ##########
-    #         encoded_IR_com = self.netG.encode(self.IR_com, self.DB)
-    #         self.fake_A_IR_com = self.netG.decode(encoded_IR_com, self.DA)
-    #         if torch.sum(FakeIR_FG_Mask) > 0.0:
-    #             loss_ACL_B = self.criterionPixCon(self.fake_A_IR_com, out_FG_RealVis, FakeIR_FG_Mask,
-    #                                               self.opt.ssim_winsize)
-    #         else:
-    #             loss_ACL_B = 0.0
-    #
-    #         if torch.sum(FakeIR_FG_Mask_flip) > 0.0:
-    #             loss_ACL_B_flip = self.criterionPixCon(self.fake_A_IR_com, out_FG_RealVis_flip, FakeIR_FG_Mask_flip,
-    #                                                    self.opt.ssim_winsize)
-    #         else:
-    #             loss_ACL_B_flip = 0.0
-    #         Com_RealVis = out_FG_RealVis + out_FG_RealVis_flip
-    #         ###Traffic Light Luminance Loss
-    #         loss_tll = self.criterionTLL(self.fake_A, SegMask_B_update.detach(), self.real_B.detach(),
-    #                                      self.gpu_ids[0])
-    #         ####Traffic light color loss
-    #         loss_TLight_color = self.criterionTLC(self.real_B, self.fake_A, SegMask_B_update.detach(), \
-    #                                               Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
-    #         loss_TLight_appe = loss_tll + loss_TLight_color
-    #         ####Appearance consistency loss of domain B
-    #         self.loss_AC[self.DB] = loss_ACL_B + loss_ACL_B_flip + self.criterionComIR(FakeIR_FG_Mask,
-    #                                                                                    FakeIR_FG_Mask_flip, \
-    #                                                                                    SegMask_B_update.detach(),
-    #                                                                                    self.IR_com, self.fake_A_IR_com,
-    #                                                                                    self.gpu_ids[0])
-    #         ########################
-    #
-    #         ##########Fake_Vis_Composition, OAMix-Vis
-    #         FakeVis_FG_Mask, FakeVis_FG_Mask_flip, _ = self.get_FG_MergeMaskVis(fake_A_Mask, self.SegMask_A.detach(),
-    #                                                                             self.gpu_ids[0])
-    #         self.Vis_com = (torch.ones_like(FakeVis_FG_Mask) - FakeVis_FG_Mask - FakeVis_FG_Mask_flip).mul(
-    #             self.real_A) + \
-    #                        FakeVis_FG_Mask.mul(self.fake_A) + FakeVis_FG_Mask_flip.mul(
-    #             torch.flip(self.fake_A.detach(), dims=[3]))
-    #         ###########
-    #
-    #         encoded_Vis_com = self.netG.encode(self.Vis_com, self.DA)
-    #         self.fake_B_Vis_com = self.netG.decode(encoded_Vis_com, self.DB)
-    #
-    #         if torch.sum(FakeVis_FG_Mask) > 0.0:
-    #             loss_ACL_A = self.criterionPixCon(self.fake_B_Vis_com, self.real_B, FakeVis_FG_Mask,
-    #                                               self.opt.ssim_winsize)
-    #         else:
-    #             loss_ACL_A = 0.0
-    #
-    #         if torch.sum(FakeVis_FG_Mask_flip) > 0.0:
-    #             loss_ACL_A_flip = self.criterionPixCon(self.fake_B_Vis_com, torch.flip(self.real_B, dims=[3]),
-    #                                                    FakeVis_FG_Mask_flip, self.opt.ssim_winsize)
-    #         else:
-    #             loss_ACL_A_flip = 0.0
-    #         ####Appearance consistency loss of domain A
-    #         self.loss_AC[self.DA] = loss_ACL_A + loss_ACL_A_flip
-    #     else:
-    #         self.IR_com = torch.ones_like(self.real_B)
-    #         self.Vis_com = torch.ones_like(self.real_B)
-    #         self.fake_B_Vis_com = torch.ones_like(self.real_B)
-    #         self.fake_A_IR_com = torch.ones_like(self.real_B)
-    #         loss_TLight_appe = 0.0
-    #         ##############################
-    #
-    #     ############Dual Feedback Learning Strategy: Feedback condition judgment
-    #     if self.FG_Sampling_idx == 1.0:
-    #         ######Domain vis
-    #         if self.loss_AC[self.DB] == 0.0:
-    #             A_FG_Sampling_Opr = 'False'
-    #         else:
-    #             if (0.5 * self.loss_AC[self.DB]) > self.loss_cycle[self.DA]:
-    #                 A_FG_Sampling_Opr = 'True'
-    #             else:
-    #                 A_FG_Sampling_Opr = 'False'
-    #
-    #         with open(self.FB_Sample_Vis_txt, "w") as FBtxtA:
-    #             FBtxtA.write(A_FG_Sampling_Opr)
-    #         ######Domain NTIR
-    #         if self.loss_AC[self.DA] == 0.0:
-    #             B_FG_Sampling_Opr = 'False'
-    #         else:
-    #             if (0.5 * self.loss_AC[self.DA]) > self.loss_cycle[self.DB]:
-    #                 B_FG_Sampling_Opr = 'True'
-    #             else:
-    #                 B_FG_Sampling_Opr = 'False'
-    #
-    #         with open(self.FB_Sample_IR_txt, "w") as FBtxtB:
-    #             FBtxtB.write(B_FG_Sampling_Opr)
-    #     ###############################################
-    #
-    #     if self.netS_freezing_idx == 1.0:
-    #         ###Conditional Gradient Repair loss
-    #         # loss_cgr_B = self.criterionCGR(self.fake_A, SegMask_B_update.detach(), self.real_B.detach(),
-    #         #                                self.gpu_ids[0]) if 0 in self.partial_train_net else 0
-    #         loss_cgr_C = self.criterionCGR(self.fake_A_BC, seg_mask_C.detach(), self.real_B.detach(),
-    #                                        self.gpu_ids[0]) if self.fake_A_BC is not None else 0
-    #         ########Domain-specific losses include CGR loss and ACA loss.
-    #         # self.loss_DS[self.DB] = self.lambda_CGR * loss_cgr_B
-    #         self.loss_DS[self.DC] = self.lambda_CGR * loss_cgr_C
-    #         # self.loss_DS[self.DA] = self.criterionACA(SegMask_A_update.detach(), encoded_A.detach(), \
-    #         #                                           SegMask_B_update.detach(), rec_encoded_B, 4, 100000,
-    #         #                                           self.gpu_ids[0]) if 1 in self.partial_train_net else 0
-    #     else:
-    #         self.loss_DS = {self.DA: 0.0, self.DB: 0.0, self.DC: 0.0}
-    #
-    #     # Optional structure constraint loss on generate fake images, added by lfy
-    #     ####The last three terms of loss_sga[self.DA] denote the monochromatic regularization term, the temperature
-    #     # regularization term, and the bias correction loss, respectively.
-    #     self.loss_sga = {self.DA: 0.0, self.DB: 0.0, self.DC: 0, self.Fus: 0}
-    #     self.loss_sga[self.DC] += (self.lambda_sga * (
-    #         self.criterionSGAVis(self.EdgeMap_B, self.get_gradmag(self.fake_B_C),
-    #                              self.patch_num_sqrt, self.grad_th_vis) +
-    #         self.criterionSGAVis(self.EdgeMap_B,
-    #                              self.get_gradmag(self.fake_A_C),
-    #                              self.patch_num_sqrt, self.grad_th_vis) if self.cond('DA', 'DB',
-    #                                                                                  'EC') else self.null)) + \
-    #                               torch.max(torch.max(self.fake_B_C, 1)[0] - torch.min(self.fake_B_C, 1)[0]) + \
-    #                               self.lambda_ssim * self.criterionIRClsDis(self.SegMask_B.detach(), self.fake_B_C,
-    #                                                                         self.real_B.detach(), self.gpu_ids[0]) + \
-    #                               self.lambda_ssim * self.criterionBC(self.SegMask_B.detach(), self.fake_B_C,
-    #                                                                   self.real_B.detach(), self.rec_B_BC,
-    #                                                                   self.EdgeMap_B,
-    #                                                                   self.gpu_ids[0])
-    #
-    #     self.loss_sga[self.Fus] = (self.lambda_sga * self.criterionSGAIR(self.EdgeMap_B, self.get_gradmag(self.fake_BC),
-    #                                                                      self.patch_num_sqrt,
-    #                                                                      self.grad_th_IR)) if self.cond('EC', 'Fus',
-    #                                                                                                     'DC',
-    #                                                                                                     'EB') else self.null
-    #     self.loss_sga[self.Fus] += (
-    #                 self.lambda_sga * self.criterionSGAVis(self.EdgeMap_B, self.get_gradmag(self.fake_A_BC),
-    #                                                        self.patch_num_sqrt, self.grad_th_vis)) if self.cond('EC',
-    #                                                                                                             'Fus',
-    #                                                                                                             'DA') else self.null
-    #     # self.loss_sga[self.DA] = (self.lambda_sga * self.criterionSGAVis(self.EdgeMap_A, self.get_gradmag(self.fake_B),
-    #     #                                                                 self.patch_num_sqrt, self.grad_th_vis) + \
-    #     #                          torch.max(torch.max(self.fake_B, 1)[0] - torch.min(self.fake_B, 1)[0]) + \
-    #     #                          self.lambda_ssim * self.criterionIRClsDis(self.SegMask_A.detach(), self.fake_B,
-    #     #                                                                    self.real_A.detach(), self.gpu_ids[0]) + \
-    #     # self.lambda_ssim * self.criterionBC(self.SegMask_A.detach(), self.fake_B,
-    #     #                                     self.real_A.detach(), self.rec_A, self.EdgeMap_A,
-    #     #                                     self.gpu_ids[0])) if self.cond('EB', 'DA') else self.null
-    #     self.loss_sga[self.DB] = (self.lambda_sga * self.criterionSGAIR(self.EdgeMap_B, self.get_gradmag(self.fake_A),
-    #                                                                     self.patch_num_sqrt,
-    #                                                                     self.grad_th_IR)) if self.cond('EA',
-    #                                                                                                    'DB') else self.null
-    #
-    #     ######################################
-    #
-    #     # Optional cycle loss on encoding space
-    #     if self.lambda_enc > 0:
-    #         loss_enc_C = self.criterionLatent(rec_encoded_C, encoded_C)
-    #         loss_enc_B = self.criterionLatent(rec_encoded_B, encoded_B)
-    #         loss_enc = loss_enc_C + loss_enc_B
-    #     else:
-    #         loss_enc = 0
-    #
-    #     # Optional loss on downsampled image before and after
-    #     if self.lambda_fwd > 0:
-    #         loss_fwd = self.criterionIdt(self.fake_BC, self.real_C) if self.cond('Fus') else 0
-    #     else:
-    #         loss_fwd = 0
-    #
-    #     # combined loss
-    #     loss_G = (sum(self.loss_G) + \
-    #               sum(self.loss_cycle.values()) + \
-    #               loss_idt * self.lambda_idt + \
-    #               loss_enc * self.lambda_enc + \
-    #               loss_fwd * self.lambda_fwd +
-    #               sum(self.loss_S_enc.values()) + \
-    #               sum(self.loss_tv) + \
-    #               sum(self.loss_S_rec.values()) + \
-    #               sum(self.loss_sga.values()) + \
-    #               sum(self.loss_DS) + \
-    #               sum(self.loss_SR) + \
-    #               sum(self.loss_AC) + \
-    #               loss_TLight_appe + self.loss_color)  ######Edit by lfy
-    #
-    #     loss_G.backward()
+    def backward_G_simple(self):
+        encoded_A = self.netG.encode(self.real_A, self.DA)
+        encoded_B = self.netG.encode(self.real_Fus, self.DB)
+
+        # Optional identity "autoencode" loss
+        if self.lambda_idt > 0:
+            # Same encoder and decoder should recreate image
+            idt_A = self.netG.decode(encoded_A, self.DA)
+            loss_idt_A = self.criterionIdt(idt_A, self.real_A)
+            idt_B = self.netG.decode(encoded_B, self.DB)
+            loss_idt_B = self.criterionIdt(idt_B, self.real_Fus)
+        else:
+            loss_idt_A, loss_idt_B = 0, 0
+
+        # GAN loss
+        # D_A(G_A(A))
+        self.fake_B = self.netG.decode(encoded_A, self.DB)
+        pred_fake_B = self.netD.forward(self.fake_B, self.DB)
+        self.loss_G[self.DA] = self.criterionGAN(self.pred_real_B, pred_fake_B, False)
+        # D_B(G_B(B))
+        self.fake_A = self.netG.decode(encoded_B, self.DA)
+        pred_fake_A = self.netD.forward(self.fake_A, self.DA)
+        self.loss_G[self.DB] = self.criterionGAN(self.pred_real_A, pred_fake_A, False)
+        # Forward cycle loss
+        rec_encoded_A = self.netG.encode(self.fake_B, self.DB)
+        self.rec_A = self.netG.decode(rec_encoded_A, self.DA)
+        self.loss_cycle[self.DA] = self.criterionCycle(self.rec_A, self.real_A) * self.lambda_cyc + \
+                                   (self.criterionSSIM((self.rec_A + 1) / 2, (self.real_A + 1) / 2)) * self.lambda_ssim
+
+        # Backward cycle loss
+        rec_encoded_B = self.netG.encode(self.fake_A, self.DA)
+        self.rec_B = self.netG.decode(rec_encoded_B, self.DB)
+        self.loss_cycle[self.DB] = self.criterionCycle(self.rec_B, self.real_Fus) * self.lambda_cyc + \
+                                   (self.criterionSSIM((self.rec_B + 1) / 2, (self.real_Fus + 1) / 2)) * self.lambda_ssim
+
+        # Optional total variation loss on generate fake images, added by lfy
+        self.loss_tv[self.DA] = self.lambda_tv * self.criterionTV(self.fake_A)
+        self.loss_tv[self.DB] = self.lambda_tv * self.criterionTV(self.fake_B)
+
+        # Optional semantic consistency loss on encoded and rec_encoded features, added by lfy
+        "Random size for segmentation network training. Then, retain original image size."
+        if self.netS_freezing_idx == 0.0:
+            rand_scale = torch.randint(32, 64, (1, 1))  # 32, 80
+            rand_size = int(rand_scale.item() * 4)
+            rand_size_B = int(rand_scale.item() * 4)
+        else:
+            # rand_scale = torch.randint(32, 64, (1, 1))
+            # rand_size = int(rand_scale.item() * 4)
+            rand_size_B = 256
+            rand_size = 256
+
+        SegMask_A_s = F.interpolate(self.SegMask_A.expand(1, 1, 256, 256).float(), size=[rand_size, rand_size],
+                                    mode='nearest')
+        SegMask_B_s = F.interpolate(self.SegMask_B.expand(1, 1, 256, 256).float(), size=[rand_size, rand_size],
+                                    mode='nearest')
+        real_A_s = F.interpolate(self.real_A, size=[rand_size, rand_size], mode='bilinear',
+                                 align_corners=False)  ###torch.flip(input_A, [3])
+        fake_B_s = F.interpolate(self.fake_B, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
+        fake_A_s = F.interpolate(self.fake_A, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
+        real_B_s = F.interpolate(self.real_Fus, size=[rand_size_B, rand_size_B], mode='bilinear',
+                                 align_corners=False)  ###torch.flip(input_A, [3])
+
+        self.real_A_pred, _ = self.netS.forward(real_A_s, self.DA)
+        fake_B_pred, _ = self.netS.forward(fake_B_s, self.DB)
+        self.real_B_pred, _ = self.netS.forward(real_B_s, self.DB)
+        fake_A_pred, _ = self.netS.forward(fake_A_s, self.DA)
+
+        self.fake_B_pred_d, _ = self.netS.forward(fake_B_s.detach(), self.DB)
+        self.fake_A_pred_d, _ = self.netS.forward(fake_A_s.detach(), self.DA)
+
+        if self.DB_GT_update_idx == 0.0:
+            # 0-40
+            self.loss_S_rec[self.DB] = 0.0
+            self.loss_S_enc[self.DB] = 0.0
+            if self.DA_GT_update_idx == 1.0:
+                ####30-40 epoch, training semantic segmentation networks for domain A with updating segmentation GT,
+                ###and training semantic segmentation networks for domain B by pseudo-labels of domain A and pseudo-NTIR images
+                self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
+                self.seg_loss = self.update_class_criterion(self.SegMask_A_update.long())
+                ####
+                self.loss_S_enc[self.DA] = self.lambda_sc * (
+                        self.seg_loss(self.real_A_pred, self.SegMask_A_update.long()) + \
+                        0.5 * self.criterionSemEdge(self.real_A_pred, self.SegMask_A_update.long(), 19,
+                                                    self.gpu_ids[0]))
+                self.loss_S_rec[self.DA] = self.lambda_sc * self.seg_loss(self.fake_B_pred_d,
+                                                                          self.SegMask_A_update.long())
+                self.SegMask_B_update = self.UpdateIRGTv1(self.real_B_pred.detach(), self.fake_A_pred_d,
+                                                          255 * torch.ones_like(SegMask_A_s[0].long()), real_B_s,
+                                                          self.IR_prob_th)
+
+            else:
+                ####0-20 epoch, self.lambda_sc is set to 0.
+                ####20-30 epoch, training semantic segmentation networks for domain A without updating segmentation GT
+                self.loss_S_rec[self.DA] = 0.0
+                seg_loss_A = self.update_class_criterion(SegMask_A_s[0].long())
+                self.loss_S_enc[self.DA] = self.lambda_sc * seg_loss_A(self.real_A_pred, SegMask_A_s[0].long())
+                self.SegMask_A_update = SegMask_A_s[0].long().detach()
+                self.SegMask_B_update = 255 * torch.ones_like(SegMask_A_s[0].long())
+
+        else:
+            # #40-100
+            if self.netS_freezing_idx < 1:
+                ####40-75 epoch, training semantic segmentation networks for domain A with updating segmentation GT,
+                ####and training semantic segmentation networks for domain B by both real-NTIR and pseudo-NTIR images.
+                self.loss_S_rec[self.DB] = 0.0
+                self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
+                seg_loss_A = self.update_class_criterion(self.SegMask_A_update.long())
+                self.loss_S_enc[self.DA] = self.lambda_sc * (
+                        seg_loss_A(self.real_A_pred, self.SegMask_A_update.long()) + \
+                        0.5 * self.criterionSemEdge(self.real_A_pred, self.SegMask_A_update.long(), 19,
+                                                    self.gpu_ids[0]))
+
+                self.loss_S_rec[self.DA] = self.lambda_sc * seg_loss_A(fake_B_pred, self.SegMask_A_update.long())
+                self.SegMask_B_update = self.UpdateIRGTv2(self.real_B_pred.detach(), self.fake_A_pred_d,
+                                                          SegMask_B_s[0].long(), real_B_s, self.IR_prob_th)
+                seg_loss_B = self.update_class_criterion(self.SegMask_B_update.long())
+                self.loss_S_enc[self.DB] = self.lambda_sc * seg_loss_B(self.real_B_pred, self.SegMask_B_update.long())
+
+            else:
+                ####75-100 epoch, constraining semantic consistency after fixing segmentation networks of the two domains.
+                self.loss_S_enc[self.DA] = 0.0
+                self.loss_S_enc[self.DB] = 0.0
+                self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
+                seg_loss_A = self.update_class_criterion(self.SegMask_A_update.long())
+                self.loss_S_rec[self.DA] = self.lambda_sc * seg_loss_A(fake_B_pred, self.SegMask_A_update.long())
+                self.SegMask_B_update = self.UpdateIRGTv2(self.real_B_pred.detach(), self.fake_A_pred_d,
+                                                          SegMask_B_s[0].long(), real_B_s, self.IR_prob_th)
+                SegMask_B_update2 = F.interpolate(self.SegMask_B_update.expand(1, 1, 256, 256).float(),
+                                                  size=[rand_size, rand_size], mode='nearest')
+                seg_loss_B = self.update_class_criterion(SegMask_B_update2[0].long())
+                self.loss_S_rec[self.DB] = self.lambda_sc * seg_loss_B(fake_A_pred, SegMask_B_update2[0].long())
+
+        # Optional Scale Robustness Loss on generated fake images, added by lfy
+        if self.DB_GT_update_idx > 0.0:
+            inv_idx = torch.rand(1)
+            if inv_idx > 0.5:
+                real_A_ds = F.interpolate(self.real_A, size=[128, 128], mode='bilinear', align_corners=False)
+                real_B_ds = F.interpolate(self.real_Fus, size=[128, 128], mode='bilinear', align_corners=False)
+                encoded_real_A_ds = self.netG.encode(real_A_ds, self.DA)
+                fake_B_real_A_ds = self.netG.decode(encoded_real_A_ds, self.DB)
+                encoded_real_B_ds = self.netG.encode(real_B_ds, self.DB)
+                fake_A_real_B_ds = self.netG.decode(encoded_real_B_ds, self.DA)
+
+                fake_A_ds = F.interpolate(self.fake_A, size=[128, 128], mode='bilinear', align_corners=False)
+                fake_B_ds = F.interpolate(self.fake_B, size=[128, 128], mode='bilinear', align_corners=False)
+            else:
+                real_A_ds = F.interpolate(self.real_A, size=[384, 384], mode='bilinear', align_corners=False)
+                real_B_ds = F.interpolate(self.real_Fus, size=[384, 384], mode='bilinear', align_corners=False)
+                encoded_real_A_ds = self.netG.encode(real_A_ds, self.DA)
+                fake_B_real_A_ds = F.interpolate(self.netG.decode(encoded_real_A_ds, self.DB), size=[256, 256],
+                                                 mode='bilinear', align_corners=False)
+                encoded_real_B_ds = self.netG.encode(real_B_ds, self.DB)
+                fake_A_real_B_ds = F.interpolate(self.netG.decode(encoded_real_B_ds, self.DA), size=[256, 256],
+                                                 mode='bilinear', align_corners=False)
+
+                fake_A_ds = self.fake_A
+                fake_B_ds = self.fake_B
+
+            self.loss_SR[self.DA] = self.lambda_cyc * self.L1(fake_B_real_A_ds, fake_B_ds.detach()) + \
+                                    (self.criterionSSIM((fake_B_real_A_ds + 1) / 2, (fake_B_ds.detach() + 1) / 2))
+            self.loss_SR[self.DB] = self.lambda_cyc * self.L1(fake_A_real_B_ds, fake_A_ds.detach()) + \
+                                    (self.criterionSSIM((fake_A_real_B_ds + 1) / 2, (fake_A_ds.detach() + 1) / 2))
+
+        else:
+            self.loss_SR[self.DA] = 0.0
+            self.loss_SR[self.DB] = 0.0
+        ######################
+
+        ########################
+
+        if self.lambda_acl > 0:
+            fake_A_Mask = F.interpolate(self.fake_A_pred_d.expand(1, 19, rand_size, rand_size).float(), size=[256, 256],
+                                        mode='bilinear', align_corners=False)
+            ##########Fake_IR_Composition, OAMix-TIR
+            FakeIR_FG_Mask, out_FG_FakeIR, out_FG_RealVis, FakeIR_FG_Mask_flip, out_FG_FakeIR_flip, out_FG_RealVis_flip, FakeIR_FG_Mask_ori, HL_Mask, ComIR_Light_Mask = \
+                self.get_FG_MergeMask(self.SegMask_A.detach(), fake_A_Mask, self.real_A, self.fake_B.detach(),
+                                      self.gpu_ids[0])
+            self.IR_com = self.get_IR_Com(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, out_FG_FakeIR, out_FG_FakeIR_flip,
+                                          self.real_Fus.detach(), self.SegMask_B_update.detach(), HL_Mask)
+            ##########
+            encoded_IR_com = self.netG.encode(self.IR_com, self.DB)
+            self.fake_A_IR_com = self.netG.decode(encoded_IR_com, self.DA)
+            if torch.sum(FakeIR_FG_Mask) > 0.0:
+                loss_ACL_B = self.criterionPixCon(self.fake_A_IR_com, out_FG_RealVis, FakeIR_FG_Mask,
+                                                  self.opt.ssim_winsize)
+            else:
+                loss_ACL_B = 0.0
+
+            if torch.sum(FakeIR_FG_Mask_flip) > 0.0:
+                loss_ACL_B_flip = self.criterionPixCon(self.fake_A_IR_com, out_FG_RealVis_flip, FakeIR_FG_Mask_flip,
+                                                       self.opt.ssim_winsize)
+            else:
+                loss_ACL_B_flip = 0.0
+            Com_RealVis = out_FG_RealVis + out_FG_RealVis_flip
+            ###Traffic Light Luminance Loss
+            loss_tll = self.criterionTLL(self.fake_A, self.SegMask_B_update.detach(), self.real_Fus.detach(),
+                                         self.gpu_ids[0])
+            ####Traffic light color loss
+            loss_TLight_color = self.criterionTLC(self.real_Fus, self.fake_A, self.SegMask_B_update.detach(), \
+                                                  Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
+            loss_TLight_appe = loss_tll + loss_TLight_color
+            ####Appearance consistency loss of domain B
+            self.loss_AC[self.DB] = loss_ACL_B + loss_ACL_B_flip + self.criterionComIR(FakeIR_FG_Mask,
+                                                                                       FakeIR_FG_Mask_flip, \
+                                                                                       self.SegMask_B_update.detach(),
+                                                                                       self.IR_com, self.fake_A_IR_com,
+                                                                                       self.gpu_ids[0])
+            ########################
+
+            ##########Fake_Vis_Composition, OAMix-Vis
+            FakeVis_FG_Mask, FakeVis_FG_Mask_flip, _ = self.get_FG_MergeMaskVis(fake_A_Mask, self.SegMask_A.detach(),
+                                                                                self.gpu_ids[0])
+            self.Vis_com = (torch.ones_like(FakeVis_FG_Mask) - FakeVis_FG_Mask - FakeVis_FG_Mask_flip).mul(
+                self.real_A) + \
+                           FakeVis_FG_Mask.mul(self.fake_A) + FakeVis_FG_Mask_flip.mul(
+                torch.flip(self.fake_A.detach(), dims=[3]))
+            ###########
+
+            encoded_Vis_com = self.netG.encode(self.Vis_com, self.DA)
+            self.fake_B_Vis_com = self.netG.decode(encoded_Vis_com, self.DB)
+
+            if torch.sum(FakeVis_FG_Mask) > 0.0:
+                loss_ACL_A = self.criterionPixCon(self.fake_B_Vis_com, self.real_Fus, FakeVis_FG_Mask,
+                                                  self.opt.ssim_winsize)
+            else:
+                loss_ACL_A = 0.0
+
+            if torch.sum(FakeVis_FG_Mask_flip) > 0.0:
+                loss_ACL_A_flip = self.criterionPixCon(self.fake_B_Vis_com, torch.flip(self.real_Fus, dims=[3]),
+                                                       FakeVis_FG_Mask_flip, self.opt.ssim_winsize)
+            else:
+                loss_ACL_A_flip = 0.0
+            ####Appearance consistency loss of domain A
+            self.loss_AC[self.DA] = loss_ACL_A + loss_ACL_A_flip
+        else:
+            self.IR_com = torch.ones_like(self.real_Fus)
+            self.Vis_com = torch.ones_like(self.real_Fus)
+            self.fake_B_Vis_com = torch.ones_like(self.real_Fus)
+            self.fake_A_IR_com = torch.ones_like(self.real_Fus)
+            loss_TLight_appe = 0.0
+            ##############################
+
+        ############Dual Feedback Learning Strategy: Feedback condition judgment
+        if self.FG_Sampling_idx == 1.0:
+            ######Domain vis
+            if self.loss_AC[self.DB] == 0.0:
+                A_FG_Sampling_Opr = 'False'
+            else:
+                if (0.5 * self.loss_AC[self.DB].item()) > self.loss_cycle[self.DA].item():
+                    A_FG_Sampling_Opr = 'True'
+                else:
+                    A_FG_Sampling_Opr = 'False'
+
+            with open(self.FB_Sample_Vis_txt, "w") as FBtxtA:
+                FBtxtA.write(A_FG_Sampling_Opr)
+            ######Domain NTIR
+            if self.loss_AC[self.DA] == 0.0:
+                B_FG_Sampling_Opr = 'False'
+            else:
+                if (0.5 * self.loss_AC[self.DA].item()) > self.loss_cycle[self.DB].item():
+                    B_FG_Sampling_Opr = 'True'
+                else:
+                    B_FG_Sampling_Opr = 'False'
+
+            with open(self.FB_Sample_IR_txt, "w") as FBtxtB:
+                FBtxtB.write(B_FG_Sampling_Opr)
+        ###############################################
+
+        if self.netS_freezing_idx == 1.0:
+            ###Conditional Gradient Repair loss
+            loss_cgr = self.criterionCGR(self.fake_A, self.SegMask_B_update[None].detach(), self.real_Fus.detach(),
+                                         self.gpu_ids[0])
+            ########Domain-specific losses include CGR loss and ACA loss.
+            self.loss_DS[self.DB] = self.lambda_CGR * loss_cgr
+            self.loss_DS[self.DA] = self.criterionACA(self.SegMask_A_update.detach(), encoded_A.detach(), \
+                                                      self.SegMask_B_update.detach(), rec_encoded_B, 4, 100000,
+                                                      self.gpu_ids[0])
+        else:
+            self.loss_DS[self.DA] = 0.0
+            self.loss_DS[self.DB] = 0.0
+
+        # Optional structure constraint loss on generate fake images, added by lfy
+        ####The last three terms of loss_sga[self.DA] denote the monochromatic regularization term, the temperature
+        # regularization term, and the bias correction loss, respectively.
+        self.loss_sga[self.DA] = self.lambda_sga * self.criterionSGAVis(self.EdgeMap_A, self.get_gradmag(self.fake_B),
+                                                                        self.patch_num_sqrt, self.grad_th_vis) + \
+                                 torch.max(torch.max(self.fake_B, 1)[0] - torch.min(self.fake_B, 1)[0]) + \
+                                 self.lambda_ssim * self.criterionIRClsDis(self.SegMask_A.detach(), self.fake_B,
+                                                                           self.real_A.detach(), self.gpu_ids[0]) + \
+                                 self.lambda_ssim * self.criterionBC(self.SegMask_A.detach(), self.fake_B,
+                                                                     self.real_A.detach(), self.rec_A, self.EdgeMap_A,
+                                                                     self.gpu_ids[0])
+        self.loss_sga[self.DB] = self.lambda_sga * self.criterionSGAIR(self.EdgeMap_B, self.get_gradmag(self.fake_A),
+                                                                       self.patch_num_sqrt, self.grad_th_IR)
+
+        ######################################
+
+        # Optional cycle loss on encoding space
+        if self.lambda_enc > 0:
+            loss_enc_A = self.criterionLatent(rec_encoded_A, encoded_A)
+            loss_enc_B = self.criterionLatent(rec_encoded_B, encoded_B)
+        else:
+            loss_enc_A, loss_enc_B = 0, 0
+
+        # Optional loss on downsampled image before and after
+        if self.lambda_fwd > 0:
+            loss_fwd_A = self.criterionIdt(self.fake_B, self.real_A)
+            loss_fwd_B = self.criterionIdt(self.fake_A, self.real_Fus)
+        else:
+            loss_fwd_A, loss_fwd_B = 0, 0
+
+        # combined loss
+        loss_G = (self.loss_G[self.DA] + self.loss_G[self.DB] + \
+                  (self.loss_cycle[self.DA] + self.loss_cycle[self.DB]) + \
+                  (loss_idt_A + loss_idt_B) * self.lambda_idt + \
+                  (loss_enc_A + loss_enc_B) * self.lambda_enc + \
+                  (loss_fwd_A + loss_fwd_B) * self.lambda_fwd + \
+                  (self.loss_S_enc[self.DA] + self.loss_S_enc[self.DB]) + \
+                  (self.loss_tv[self.DA] + self.loss_tv[self.DB]) + \
+                  (self.loss_S_rec[self.DA] + self.loss_S_rec[self.DB]) + \
+                  (self.loss_sga[self.DA] + self.loss_sga[self.DB]) + \
+                  (self.loss_DS[self.DA] + self.loss_DS[self.DB]) + \
+                  (self.loss_SR[self.DA] + self.loss_SR[self.DB]) + \
+                  (self.loss_AC[self.DA] + self.loss_AC[self.DB]) + \
+                  loss_TLight_appe)  ######Edit by lfy
+
+        loss_G.backward()
 
     # def backward_G_simple(self):
     #     encoded_A = self.netG.encode(self.real_A, self.DA)
@@ -2102,107 +1982,95 @@ class GanColorCombo(ComboGANModel):
     #               loss_TLight_appe + self.loss_color)  ######Edit by lfy
     #
     #     loss_G.backward()
-    def backward_G_simple(self):
-        encoded_B = self.netG.encode(self.real_B, self.DB)
-        encoded_C = self.netG.encode(self.real_C, self.DC)
-        encoded_BC = self.netG.fusion_features(encoded_B, encoded_C)
-
-        # Optional identity "autoencode" loss ###############################
-        if self.lambda_idt > 0:
-            # Same encoder and decoder should recreate image
-            loss_idt_C = self.criterionIdt(self.netG.decode(encoded_C, self.DC), self.real_C)
-            B, C = self.netG.separation_features(encoded_BC)
-
-            loss_idt_BC = (self.criterionIdt(self.netG.decode(C, self.DC), self.real_C) +
-                           self.criterionIdt(self.netG.decode(B, self.DB), self.real_B))
-            loss_idt = loss_idt_C + loss_idt_BC
-        else:
-            loss_idt = self.null
-        # GAN loss ##############################################################
-        self.loss_G = [0, 0, 0, 0]
-        self.fake_A_C = self.netG.decode(encoded_C, self.DA)
-        self.fake_B_C = self.netG.decode(encoded_C, self.DB)
-        self.loss_G[0] += self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A_C, self.DA), False) \
-            if self.cond('EC') else self.null
-        self.loss_G[0] += self.criterionGAN(self.pred_real_B, self.netD.forward(self.fake_B_C, self.DB), False) \
-            if self.cond('EC') else self.null
-        # D_BC(G_BC(B, C))
-        self.fake_A_BC = self.netG.decode(encoded_BC, self.DA)
-        self.fake_BC = self.netG.decode(encoded_BC, self.DC)
-        self.loss_G[1] = self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A_BC, self.DA), False) \
-            if self.cond('EC', 'Fus') else self.null
-
-        # loss_likeness
-        loss_likeness = self.CriterionLikeness(self.fake_B_C, self.real_B) if self.cond('EC') else self.null
-
-        # Cycle loss
-        self.loss_cycle = {self.DC: 0, self.Fus: 0}
-        loss_cycle = lambda x, y: (self.criterionCycle(x, y) * self.lambda_cyc +
-                                   self.criterionSSIM((x + 1) / 2, (y + 1) / 2) * self.lambda_ssim)
-
-        self.rec_A = None
-        # Forward cycle loss for domain C
-        rec_encoded_BC = self.netG.encode(self.fake_A_BC, self.DA)
-        rec_encoded_B, rec_encoded_C = self.netG.separation_features(rec_encoded_BC)
-        self.rec_BC_C = self.netG.decode(rec_encoded_C, self.DC)
-        self.rec_BC_B = self.netG.decode(rec_encoded_B, self.DB)
-        self.loss_cycle[self.DC] = loss_cycle(self.rec_BC_C, self.real_C)
-        self.loss_cycle[self.DC] += loss_cycle(self.rec_BC_B, self.real_B) if self.cond('EC', 'Fus') else self.null
-
-        # Fusion cycle loss
-        rec_encoded_BC = self.netG.encode(self.fake_BC, self.DC)
-        self.rec_B = self.netG.decode(rec_encoded_BC, self.DB)
-        self.rec_C = self.netG.decode(rec_encoded_BC, self.DC)
-        self.loss_cycle[self.Fus] = loss_cycle(self.rec_C, self.real_C)
-        self.loss_cycle[self.Fus] += loss_cycle(self.rec_B, self.real_B) if self.cond('EC', 'Fus') else self.null
-
-        rec_encoded_A_C = self.netG.encode(self.fake_A_C, self.DA)
-        self.rec_C_A = self.netG.decode(rec_encoded_A_C, self.DC)
-        self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A, self.real_B) if self.cond('EC', 'DC') else self.null
-
-        rec_encoded_B_C = self.netG.encode(self.fake_B_C, self.DB)
-        self.rec_C_B = self.netG.decode(rec_encoded_B_C, self.DC)
-        self.loss_cycle[self.DC] += loss_cycle(self.rec_C_B, self.real_B) if self.cond('EC', 'DC') else self.null
-
-        self.loss_tv = {self.DC: 0, self.Fus: 0}
-        # Optional total variation loss on generate fake images, added by lfy
-        self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_A_C) if self.cond('EC') else self.null
-        self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_B_C) if self.cond('EC') else self.null
-        self.loss_tv[self.Fus] += self.lambda_tv * self.criterionTV(self.fake_A_BC) if self.cond('Fus') else self.null
-        self.loss_tv[self.Fus] += self.lambda_tv * self.criterionTV(self.fake_BC) if self.cond('Fus') else self.null
-
-        # combined loss
-        loss_G = (sum(self.loss_G) + \
-                  sum(self.loss_cycle.values()) + \
-                  loss_idt * self.lambda_idt + \
-                  sum(self.loss_tv) + loss_likeness)  ######Edit by lfy
-
-        loss_G.backward()
+    # def backward_G_simple(self):
+    #     encoded_B = self.netG.encode(self.real_B, self.DB)
+    #     encoded_C = self.netG.encode(self.real_C, self.DC)
+    #     encoded_BC = self.netG.fusion_features(encoded_B, encoded_C)
+    #
+    #     # Optional identity "autoencode" loss ###############################
+    #     if self.lambda_idt > 0:
+    #         # Same encoder and decoder should recreate image
+    #         loss_idt_C = self.criterionIdt(self.netG.decode(encoded_C, self.DC), self.real_C)
+    #         B, C = self.netG.separation_features(encoded_BC)
+    #
+    #         loss_idt_BC = (self.criterionIdt(self.netG.decode(C, self.DC), self.real_C) +
+    #                        self.criterionIdt(self.netG.decode(B, self.DB), self.real_B))
+    #         loss_idt = loss_idt_C + loss_idt_BC
+    #     else:
+    #         loss_idt = self.null
+    #     # GAN loss ##############################################################
+    #     self.loss_G = [0, 0, 0, 0]
+    #     self.fake_A_C = self.netG.decode(encoded_C, self.DA)
+    #     self.fake_B_C = self.netG.decode(encoded_C, self.DB)
+    #     self.loss_G[0] += self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A_C, self.DA), False) \
+    #         if self.cond('EC') else self.null
+    #     self.loss_G[0] += self.criterionGAN(self.pred_real_B, self.netD.forward(self.fake_B_C, self.DB), False) \
+    #         if self.cond('EC') else self.null
+    #     # D_BC(G_BC(B, C))
+    #     self.fake_A_BC = self.netG.decode(encoded_BC, self.DA)
+    #     self.fake_BC = self.netG.decode(encoded_BC, self.DC)
+    #     self.loss_G[1] = self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A_BC, self.DA), False) \
+    #         if self.cond('EC', 'Fus') else self.null
+    #
+    #     # loss_likeness
+    #     loss_likeness = self.CriterionLikeness(self.fake_B_C, self.real_B) if self.cond('EC') else self.null
+    #
+    #     # Cycle loss
+    #     self.loss_cycle = {self.DC: 0, self.Fus: 0}
+    #     loss_cycle = lambda x, y: (self.criterionCycle(x, y) * self.lambda_cyc +
+    #                                self.criterionSSIM((x + 1) / 2, (y + 1) / 2) * self.lambda_ssim)
+    #
+    #     self.rec_A = None
+    #     # Forward cycle loss for domain C
+    #     rec_encoded_BC = self.netG.encode(self.fake_A_BC, self.DA)
+    #     rec_encoded_B, rec_encoded_C = self.netG.separation_features(rec_encoded_BC)
+    #     self.rec_BC_C = self.netG.decode(rec_encoded_C, self.DC)
+    #     self.rec_BC_B = self.netG.decode(rec_encoded_B, self.DB)
+    #     self.loss_cycle[self.DC] = loss_cycle(self.rec_BC_C, self.real_C)
+    #     self.loss_cycle[self.DC] += loss_cycle(self.rec_BC_B, self.real_B) if self.cond('EC', 'Fus') else self.null
+    #
+    #     # Fusion cycle loss
+    #     rec_encoded_BC = self.netG.encode(self.fake_BC, self.DC)
+    #     self.rec_B = self.netG.decode(rec_encoded_BC, self.DB)
+    #     self.rec_C = self.netG.decode(rec_encoded_BC, self.DC)
+    #     self.loss_cycle[self.Fus] = loss_cycle(self.rec_C, self.real_C)
+    #     self.loss_cycle[self.Fus] += loss_cycle(self.rec_B, self.real_B) if self.cond('EC', 'Fus') else self.null
+    #
+    #     rec_encoded_A_C = self.netG.encode(self.fake_A_C, self.DA)
+    #     self.rec_C_A = self.netG.decode(rec_encoded_A_C, self.DC)
+    #     self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A, self.real_B) if self.cond('EC', 'DC') else self.null
+    #
+    #     rec_encoded_B_C = self.netG.encode(self.fake_B_C, self.DB)
+    #     self.rec_C_B = self.netG.decode(rec_encoded_B_C, self.DC)
+    #     self.loss_cycle[self.DC] += loss_cycle(self.rec_C_B, self.real_B) if self.cond('EC', 'DC') else self.null
+    #
+    #     self.loss_tv = {self.DC: 0, self.Fus: 0}
+    #     # Optional total variation loss on generate fake images, added by lfy
+    #     self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_A_C) if self.cond('EC') else self.null
+    #     self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_B_C) if self.cond('EC') else self.null
+    #     self.loss_tv[self.Fus] += self.lambda_tv * self.criterionTV(self.fake_A_BC) if self.cond('Fus') else self.null
+    #     self.loss_tv[self.Fus] += self.lambda_tv * self.criterionTV(self.fake_BC) if self.cond('Fus') else self.null
+    #
+    #     # combined loss
+    #     loss_G = (sum(self.loss_G) + \
+    #               sum(self.loss_cycle.values()) + \
+    #               loss_idt * self.lambda_idt + \
+    #               sum(self.loss_tv) + loss_likeness)  ######Edit by lfy
+    #
+    #     loss_G.backward()
 
     def backward_D_simple(self):
+        self.loss_D = {self.DA: 0., self.DB: 0., self.DC: 0.}
         #D_A
         if self.cond('B', dom='D'):
-            fake_B_C = self.fake_pools[self.DB].query(self.fake_B_C)
             fake_B = self.fake_pools[self.DB].query(self.fake_B)
-            self.loss_D[self.DB] = self.backward_D_basic(self.pred_real_B, fake_B, self.DB)
-            self.loss_D[self.DB] += self.backward_D_basic(self.pred_real_B, fake_B_C, self.DB)
+            self.loss_D[self.DB] += self.backward_D_basic(self.pred_real_B, fake_B, self.DB)
             self.loss_D[self.DB].backward()
         #D_B
         if self.cond('A', dom='D'):
             fake_A = self.fake_pools[self.DA].query(self.fake_A)
-            fake_A_C = self.fake_pools[self.DA].query(self.fake_A_C)
-            fake_A_BC = self.fake_pools[self.DC].query(self.fake_A_BC)
-            self.loss_D[self.DA] = self.backward_D_basic(self.pred_real_A, fake_A, self.DA)
-            self.loss_D[self.DA] += self.backward_D_basic(self.pred_real_A, fake_A_C, self.DA)
-            self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_A_BC, self.DA)
+            self.loss_D[self.DA] += self.backward_D_basic(self.pred_real_A, fake_A, self.DA)
             self.loss_D[self.DA].backward()
-        #D_C
-        if self.cond('C', dom='D'):
-            fake_C_A = self.fake_pools[self.DC].query(self.fake_C_A)
-            fake_C_B = self.fake_pools[self.DC].query(self.fake_C_B)
-            self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_C_A, self.DC)
-            self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_C_B, self.DC)
-            self.loss_D[self.DC].backward()
 
     def backward_D(self):
         self.loss_D = {self.DA: 0., self.DB: 0., self.DC: 0.}
@@ -2282,8 +2150,11 @@ class GanColorCombo(ComboGANModel):
         self.alternate = (self.alternate + 1) % 2
         self.epoch = epoch
         self.pred_real_A = self.netD.forward(self.real_A, self.DA)
-        self.pred_real_B = self.netD.forward(self.real_B, self.DB)
-        self.pred_real_C = self.netD.forward(self.real_C, self.DC)
+        if not self.opt.simple_train:
+            self.pred_real_B = self.netD.forward(self.real_B, self.DB)
+            self.pred_real_C = self.netD.forward(self.real_C, self.DC)
+        else:
+            self.pred_real_B = self.netD.forward(self.real_Fus, self.DB)
 
         # G_A and G_B
         self.netG.zero_grads(*self.partial_train_net['G'])

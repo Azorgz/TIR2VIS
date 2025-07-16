@@ -32,7 +32,7 @@ class TrainOptions(BaseOptions):
 
         self.parser.add_argument('--continue_train', type=bool, default=False,
                                  help='continue training: load the latest model')
-        self.parser.add_argument('--simple_train', type=bool, default=False,
+        self.parser.add_argument('--simple_train', type=bool, default=True,
                                  help='continue training: load the latest model')
         self.parser.add_argument('--which_epoch', type=int, default=0,
                                  help='which epoch to load if continuing training')
@@ -129,11 +129,11 @@ class TrainOptions(BaseOptions):
 
         self.parser.add_argument('--save_epoch_freq', type=int, default=5,
                                  help='frequency of saving checkpoints at the end of epochs')
-        self.parser.add_argument('--save_step_latest', type=int, default=2000,
+        self.parser.add_argument('--save_step_latest', type=int, default=1000,
                                  help='frequency of saving checkpoints at the end of epochs')
-        self.parser.add_argument('--display_freq', type=int, default=2000,
+        self.parser.add_argument('--display_freq', type=int, default=200,
                                  help='frequency of showing training results on screen')
-        self.parser.add_argument('--print_freq', type=int, default=2000,
+        self.parser.add_argument('--print_freq', type=int, default=200,
                                  help='frequency of showing training results on console')
         self.parser.add_argument('--pool_size', type=int, default=10,
                                  help='the size of image buffer that stores previously generated images')
