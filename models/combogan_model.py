@@ -881,7 +881,7 @@ class GanColorCombo(ComboGANModel):
         encoded_B = encoded_B.detach() if not self.cond('EB') else encoded_B
         encoded_C = encoded_C.detach() if not self.cond('EC') else encoded_C
 
-        encoded_BC = self.netG.fusion_features(encoded_B, encoded_C, self.mask)
+        encoded_BC = self.netG.fusion_features(encoded_B, encoded_C, self.mask, self.real_B, self.real_C)
         encoded_BC = encoded_BC.detach() if not self.cond('Fus') else encoded_BC
 
 

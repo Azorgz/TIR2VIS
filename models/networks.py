@@ -1,23 +1,18 @@
+import functools
+import math
 from os.path import isfile
 
+import numpy as np
 import torch
 import torch.nn as nn
-import functools, itertools
-import numpy as np
-from einops import rearrange, repeat
-from fastai.vision.learner import create_body
-from fastai.vision.models.unet import DynamicUnet
-from kornia.color import rgb_to_lab, lab_to_rgb
+import torch.nn.functional as F
+from einops import repeat
 from torchmetrics.image import StructuralSimilarityIndexMeasure
-from torchvision.models import resnet18, ResNet18_Weights
+from torchvision import models
 
 from ImagesCameras import ImageTensor
-from ImagesCameras.Metrics import SSIM
 from models.utils_fct import get_norm_layer, weights_init, power_iteration
 from util.util import gkern_2d
-import torch.nn.functional as F
-from torchvision import models
-import math
 
 
 # Convenience passthrough function
@@ -870,7 +865,7 @@ class ResnetBlock2(nn.Module):
                        norm_layer(dim)]
 
         self.conv_block = SequentialContext(n_domains, *conv_block)
-        self.fus_conv = nn.Conv2d(2 * dim, 4 * dim, kernel_size=3, padding=1, bias=use_bias)
+        self.fus_conv = nn.Conv2d(2 * dim, 2 * dim, kernel_size=3, padding=1, bias=use_bias)
         self.ssim = StructuralSimilarityIndexMeasure(gaussian_kernel=True,
                                                                  sigma=1.5,
                                                                  kernel_size=11,
@@ -879,13 +874,15 @@ class ResnetBlock2(nn.Module):
                                                                  k1=0.01, k2=0.03,
                                                                  return_full_image=True,
                                                                  return_contrast_sensitivity=False).to('cuda')
-        self.final_block = nn.Sequential(nn.Conv2d(2 * dim, dim, kernel_size=3, padding=1, bias=use_bias),
+        self.final_block = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=3, padding=1, bias=use_bias),
                                          norm_layer(dim),
-                                         nn.PReLU())
-
+                                         nn.Tanh())
 
     def forward(self, inp, *args):
-        mask = args[0] if args else None
+        if args:
+            mask, image_ir_, image_rgb = args
+        else:
+            mask, image_ir_, image_rgb = None, None, None
         if isinstance(inp, tuple):
             x, y = inp
             b, c, h, w = x.shape
@@ -894,8 +891,8 @@ class ResnetBlock2(nn.Module):
             y_ = self.filter(y_, mask) if mask is not None else y_
             xy_ = torch.cat([x_, y_], dim=1)
             res = self.fus_conv(xy_)
-            x_, y_ = res.split(2*c, 1)
-            mask = self.compute_mask(x_, y_)
+            x_, y_ = res.split(c, 1)
+            mask = F.interpolate(self.compute_mask(image_ir_, image_rgb), (h, w)) if image_rgb is not None else self.compute_mask(x_, y_)
             res = mask * x_ + (1-mask) * y_
             # res = torch.max(torch.cat([x_.reshape(1, -1), y_.reshape(1, -1)]), dim=0)[0]
             return self.final_block(res)
@@ -913,7 +910,7 @@ class ResnetBlock2(nn.Module):
         im_y = ImageTensor(feat_y * 0.5 + 1)
         _, mask = self.ssim(im_x, im_y)
         self.ssim.reset()
-        return torch.abs(mask.detach())
+        return torch.abs(mask.detach()).mean(dim=1, keepdim=True)
 
 
 class Linear(nn.Linear):
@@ -979,10 +976,13 @@ class ConcatBlock(nn.Module):
         self.conv_block_fus = nn.Sequential(*conv_block_fus)
 
     def forward(self, x_input, y_input=None, *args):
-        mask = args[0] if args else None
+        if args:
+            mask, image_ir, image_rgb = args
+        else:
+            mask, image_ir, image_rgb = None, None, None
         z = y_input
         for conv in self.conv_block_fus:
-            z = conv((x_input, z), mask)
+            z = conv((x_input, z), mask, image_ir, image_rgb)
         return z
 
 
@@ -1567,8 +1567,8 @@ class Color_G_Plexer(G_Plexer):
     # def fusion_features(self, feat1, feat2):  # The input need to be aligned
     #     return self.feature_concatenation(feat1, feat2)
 
-    def fusion_features(self, image1, image2, mask=None):  # The input need to be aligned
-        return self.feature_concatenation(image1, image2, mask)
+    def fusion_features(self, image1, image2, *args):  # The input need to be aligned
+        return self.feature_concatenation(image1, image2, *args)
 
     def separation_features(self, feat):
         return self.feature_concatenation(feat, sep=True)

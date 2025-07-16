@@ -1,9 +1,9 @@
 #!/bin/bash
-OAR -n tir2vis
-OAR  -l nodes=2/gpu=12,walltime=05:00:00
-OAR --stdout logs/%jobid%.out
-OAR --stderr logs/%jobid%.err
-OAR --projet pr-remote-sensing-1a
+oarsub -n tir2vis
+oarsub -l nodes=2/gpu=6,walltime=01:00:00
+oarsub --stdout logs/%jobid%.out
+oarsub --stderr logs/%jobid%.err
+oarsub --projet pr-remote-sensing-1a
 
 python ~/TIR2VIS/train.py
 

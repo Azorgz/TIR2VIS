@@ -34,9 +34,9 @@ class TrainOptions(BaseOptions):
                                  help='continue training: load the latest model')
         self.parser.add_argument('--simple_train', type=bool, default=False,
                                  help='continue training: load the latest model')
-        self.parser.add_argument('--which_epoch', type=int, default=35,
+        self.parser.add_argument('--which_epoch', type=int, default=36,
                                  help='which epoch to load if continuing training')
-        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default='latest',#[35, 35, 35, 35, 35, 35, 'latest'],
+        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default=['latest', 'latest', 'latest', 'latest', 'latest', 'latest', -1],
                                  help='which epoch to load if continuing training')
         self.parser.add_argument("--partial_train", type=dict, default=None, #{'G': [0, 2, 3, 5], 'D': [0, 2], 'S': [0, 2]},
                                  help="Which domains of G - D - S are trained in ["
@@ -69,9 +69,9 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--ssim_winsize', type=int, default=11, help='window size of SSIM loss')
         self.parser.add_argument('--encoded_nc', type=int, default=128, help='channel number of encoded tensor')
 
-        self.parser.add_argument('--niter', required=True, type=int, default=150,
+        self.parser.add_argument('--niter', required=False, type=int, default=150,
                                  help='# of epochs at starting learning rate (try 50*n_domains)')
-        self.parser.add_argument('--niter_decay', required=True, type=int, default=150,
+        self.parser.add_argument('--niter_decay', required=False, type=int, default=150,
                                  help='# of epochs to linearly decay learning rate to zero (try 50*n_domains)')
 
         self.parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for ADAM')
