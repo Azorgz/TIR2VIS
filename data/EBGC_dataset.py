@@ -93,16 +93,16 @@ class EBGCDataset(BaseDataset):
         image_ref = ImageTensor(img2).RGB('gray')
         ssim_mask = ssim(image_target, image_ref, return_image=True)
         ssim_mask = ssim_mask.GRAY().resize(image_target.shape[-2:])
-        ssim_mask = guided_blur(image_ref, ssim_mask, 3, 0.1)**2
+        ssim_mask = guided_blur(image_ref, ssim_mask, 3, 0.1)
         ssim_fused_L = lab[:, :1] * ssim_mask + (1 - ssim_mask) * img2.GRAY()
         # ssim_fused_L = img2.GRAY()
-        lab = self.color_clamp(lab)
+        lab = self.color_clamp(lab, ssim_mask)
         lab[:, :1] = ssim_fused_L
         return lab.RGB().detach()
 
-    def color_clamp(self, lab):
+    def color_clamp(self, lab, mask):
         L, AB = lab[:, :1], lab[:, 1:]
-        mask = torch.where(L < L.mean() - L.std(), 0, 1)
+        mask = torch.where((L < L.mean() - L.std()) * (L > L.mean() + 3 * L.std()), 0, 1) * mask
         mask_AB = repeat(mask, 'b () h w -> b c h w', c=2)
         AB = AB * mask_AB + 0.5 * (1 - mask_AB)
         lab[:, 1:] = AB
