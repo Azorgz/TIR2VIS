@@ -6,4 +6,4 @@
 #OAR --stderr logs/error.err
 #OAR --project pr-remote-sensing-1a
 
-python ~/TIR2VIS/train.py
+python ~/TIR2VIS/train.py --continue_train True --which_epoch 'latest'
