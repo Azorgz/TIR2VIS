@@ -5,6 +5,7 @@ import time
 from . import util
 from . import html
 
+
 class Visualizer():
     def __init__(self, opt):
         # self.opt = opt

@@ -79,6 +79,7 @@ class EBGCDataset(BaseDataset):
         transform = transforms.Compose(transform_list_torch)
         if sup_dom is not None:
             img_fus = transform(self.fus_input(img_sup, img))
+            # img_fus = transform(self.fus_input(img_sup, img))
             img_res = transform(img)
             img_sup_res = transform(img_sup)
             return img_res.squeeze(0), img_sup_res.squeeze(0), img_fus.squeeze(0), edge_map.squeeze(0), (seg_mask.squeeze() * 255).to(torch.uint8).clone()
@@ -100,11 +101,13 @@ class EBGCDataset(BaseDataset):
         lab[:, :1] = ssim_fused_L
         return lab.RGB().detach()
 
-    def color_clamp(self, lab, mask):
+    def color_clamp(self, lab, mask, ratio=1):
         L, AB = lab[:, :1], lab[:, 1:]
-        mask = torch.where((L < L.mean() - L.std()) * (L > L.mean() + 3 * L.std()), 0, 1) * mask
+        AB = (AB - 0.5) * (1+ratio/100) + 0.5 * (1+ratio/100)
+        AB = torch.clamp(AB, 0, 1)
+        # mask = torch.where((L < L.mean() - L.std()) * (L > L.mean() + 3 * L.std()), 0, 1) * mask
         mask_AB = repeat(mask, 'b () h w -> b c h w', c=2)
-        AB = AB * mask_AB + 0.5 * (1 - mask_AB)
+        AB = AB * (mask_AB > 0.4) + 0.5 * (mask_AB <= 0.4)
         lab[:, 1:] = AB
         return lab
 

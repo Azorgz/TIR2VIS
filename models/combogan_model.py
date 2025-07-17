@@ -2060,7 +2060,7 @@ class GanColorCombo(ComboGANModel):
     #     loss_G.backward()
 
     def backward_D_simple(self):
-        self.loss_D = {self.DA: 0., self.DB: 0., self.DC: 0.}
+        self.loss_D = {self.DA: 0., self.DB: 0.}
         #D_A
         if self.cond('B', dom='D'):
             fake_B = self.fake_pools[self.DB].query(self.fake_B)
@@ -2109,7 +2109,7 @@ class GanColorCombo(ComboGANModel):
                             'fake_A_BC': self.fake_A_BC,
                             'fake_A_C': self.fake_A_C, 'fake_B_C': self.fake_B_C, 'fake_C_A': self.fake_C_A,
                             'fake_C_B': self.fake_C_B,
-                            'rec_A': self.rec_A, 'rec_B_A_BC': self.rec_B_A_BC, 'rec_C_A_BC': self.rec_C_A_BC,
+                            'rec_A': self.rec_A, 'rec_B': self.rec_B, 'rec_B_A_BC': self.rec_B_A_BC, 'rec_C_A_BC': self.rec_C_A_BC,
                             'rec_C_B': self.rec_C_B, 'rec_C_A': self.rec_C_A, 'rec_B_BC': self.rec_B_BC,
                             'rec_C_BC': self.rec_C_BC, 'rec_BC': self.rec_BC,
                             'rec_B_C': self.rec_B_C, 'rec_A_C': self.rec_A_C,
