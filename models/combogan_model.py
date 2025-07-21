@@ -859,7 +859,7 @@ class GanColorCombo(ComboGANModel):
         if not self.isTrain or opt.continue_train:
             epoch_load = opt.epoch_load
             if isinstance(epoch_load, list):
-                assert len(epoch_load) == len(self.netG.optimizers), 'which_epoch should be a list of 4 or 7 elements'
+                assert len(epoch_load) == len(self.netG.optimizers)
             self.load_network(self.netG, 'G', epoch_load)
 
     def cond(self, *args, dom='G'):
@@ -1011,7 +1011,7 @@ class GanColorCombo(ComboGANModel):
         # Optional semantic consistency loss on encoded and rec_encoded features, added by lfy
         # "Random size for segmentation network training. Then, retain original image size."
         if self.netS_freezing_idx == 0.0:
-            rand_scale = torch.randint(32, 64, (1, 1))  # 32, 80
+            rand_scale = torch.randint(32, 80, (1, 1))  # 32, 80
             rand_size = int(rand_scale.item() * 4)
             rand_size_B = int(rand_scale.item() * 4)
         else:
