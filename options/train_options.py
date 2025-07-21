@@ -40,11 +40,11 @@ class TrainOptions(BaseOptions):
         BaseOptions.initialize(self)
         self.isTrain = True
 
-        self.parser.add_argument('--continue_train', type=bool, default=False,
+        self.parser.add_argument('--continue_train', type=bool, default=True,
                                  help='continue training: load the latest model')
         self.parser.add_argument('--simple_train', type=bool, default=False,
                                  help='continue training: load the latest model')
-        self.parser.add_argument('--which_epoch', type=int, default=0,
+        self.parser.add_argument('--which_epoch', type=int, default=10,
                                  help='which epoch to load if continuing training')
         self.parser.add_argument('--epoch_load', type=validate_epoch_load, default=validate_epoch_load(
             {'G0': 'latest', 'G1': -1, 'G2': 'latest', 'G3': 'latest', 'G4': -1, 'G5': 'latest', 'G6': 'latest',
