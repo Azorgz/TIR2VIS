@@ -2,27 +2,37 @@ from .base_options import BaseOptions
 from typing import Union
 
 
-def validate_epoch_load(epoch_load: Union[str, list, int]) -> list:
+def validate_epoch_load(epoch_load: Union[str, dict, int]) -> dict:
     if isinstance(epoch_load, str):
         if epoch_load.lower() == 'latest':
-            return ['latest'] * 7
+            return {'G0': 'latest', 'G1': 'latest', 'G2': 'latest', 'G3': 'latest', 'G4': 'latest', 'G5': 'latest', 'G6': 'latest',
+        'D0': 'latest', 'D1': 'latest', 'D2': 'latest', 'S0': 'latest', 'S1': 'latest', 'S2': 'latest'}
         elif epoch_load.lower() == 'lastest':
-            return ['latest'] * 7
+            return {'G0': 'latest', 'G1': 'latest', 'G2': 'latest', 'G3': 'latest', 'G4': 'latest', 'G5': 'latest', 'G6': 'latest',
+        'D0': 'latest', 'D1': 'latest', 'D2': 'latest', 'S0': 'latest', 'S1': 'latest', 'S2': 'latest'}
         elif epoch_load.isdigit():
-            return [int(epoch_load)] * 7
+            return {'G0': int(epoch_load), 'G1': int(epoch_load), 'G2': int(epoch_load), 'G3': int(epoch_load), 'G4': int(epoch_load), 'G5': int(epoch_load), 'G6': int(epoch_load),
+        'D0': int(epoch_load), 'D1': int(epoch_load), 'D2': int(epoch_load), 'S0': int(epoch_load), 'S1': int(epoch_load), 'S2': int(epoch_load)}
         else:
             raise ValueError("epoch_load must be 'latest', or an integer as a string.")
     elif isinstance(epoch_load, int):
-        return [epoch_load] * 7
-    elif isinstance(epoch_load, list):
-        if len(epoch_load) == 4:
-            epoch_load = epoch_load * 2  # Duplicate to match the expected length
-            epoch_load.pop(3)
-            return epoch_load
-        elif len(epoch_load) == 7:
-            return epoch_load
-        else:
-            raise ValueError("epoch_load must be a list of 4 or 7 integers or 'latest'.")
+        return {'G0': int(epoch_load), 'G1': int(epoch_load), 'G2': int(epoch_load), 'G3': int(epoch_load), 'G4': int(epoch_load), 'G5': int(epoch_load), 'G6': int(epoch_load),
+        'D0': int(epoch_load), 'D1': int(epoch_load), 'D2': int(epoch_load), 'S0': int(epoch_load), 'S1': int(epoch_load), 'S2': int(epoch_load)}
+    elif isinstance(epoch_load, dict):
+        ret = {'G0': -1, 'G1': -1, 'G2': -1, 'G3': -1, 'G4': -1, 'G5': -1, 'G6': -1, 'D0': -1, 'D1': -1, 'D2': -1, 'S0': -1, 'S1': -1, 'S2': -1}
+        if 'G' in epoch_load:
+            G = int(epoch_load['G']) if not isinstance(epoch_load['G'], str) else epoch_load['G']
+            ret.update({'G0': G, 'G1': G, 'G2': G, 'G3': G, 'G4': G, 'G5': G, 'G6': G})
+        if 'D' in epoch_load:
+            D = int(epoch_load['D']) if not isinstance(epoch_load['D'], str) else epoch_load['D']
+            ret.update({'D0': D, 'D1': D, 'D2': D})
+        if 'S' in epoch_load:
+            S = int(epoch_load['S']) if not isinstance(epoch_load['S'], str) else epoch_load['S']
+            ret.update({'S0': S, 'S1': S, 'S2': S})
+        for key in epoch_load:
+            if key in list(ret.keys()):
+                ret[key] = epoch_load[key] if isinstance(epoch_load[key], str) else int(epoch_load[key])
+        return ret
 
 
 class TrainOptions(BaseOptions):
@@ -36,7 +46,9 @@ class TrainOptions(BaseOptions):
                                  help='continue training: load the latest model')
         self.parser.add_argument('--which_epoch', type=int, default=0,
                                  help='which epoch to load if continuing training')
-        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default='latest', #['latest', 'latest', 'latest', 'latest', 'latest', 'latest', -1],
+        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default=validate_epoch_load(
+            {'G0': 'latest', 'G1': -1, 'G2': 'latest', 'G3': 'latest', 'G4': -1, 'G5': 'latest', 'G6': 'latest',
+             'D0': 'latest', 'D2': 'latest', 'S': 'latest'}),
                                  help='which epoch to load if continuing training')
         self.parser.add_argument("--partial_train", type=dict, default=None, #{'G': [0, 2, 3, 5], 'D': [0, 2], 'S': [0, 2]},
                                  help="Which domains of G - D - S are trained in ["
@@ -69,9 +81,9 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--ssim_winsize', type=int, default=11, help='window size of SSIM loss')
         self.parser.add_argument('--encoded_nc', type=int, default=128, help='channel number of encoded tensor')
 
-        self.parser.add_argument('--niter', required=False, type=int, default=150,
+        self.parser.add_argument('--niter', type=int, default=150,
                                  help='# of epochs at starting learning rate (try 50*n_domains)')
-        self.parser.add_argument('--niter_decay', required=False, type=int, default=150,
+        self.parser.add_argument('--niter_decay', type=int, default=150,
                                  help='# of epochs to linearly decay learning rate to zero (try 50*n_domains)')
 
         self.parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for ADAM')

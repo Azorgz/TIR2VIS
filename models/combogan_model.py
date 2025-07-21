@@ -2082,7 +2082,7 @@ class GanColorCombo(ComboGANModel):
             self.loss_D[self.DA] += self.backward_D_basic(self.pred_real_A, fake_A_C, self.DA)
             fake_A_BC = self.fake_pools[self.DA].query(self.fake_A_BC)
             self.loss_D[self.DA] += self.backward_D_basic(self.pred_real_A, fake_A_BC, self.DA)
-            self.loss_D[self.DA].backward()
+            (self.loss_D[self.DA]/3).backward()
 
         # D_B
         if self.cond('B', dom='D'):
@@ -2090,7 +2090,7 @@ class GanColorCombo(ComboGANModel):
             self.loss_D[self.DB] += self.backward_D_basic(self.pred_real_B, fake_B, self.DB)
             fake_B_C = self.fake_pools[self.DB].query(self.fake_B_C)
             self.loss_D[self.DB] += self.backward_D_basic(self.pred_real_B, fake_B_C, self.DB)
-            self.loss_D[self.DB].backward()
+            (self.loss_D[self.DB]/2).backward()
 
         # D_C
         if self.cond('C', dom='D'):
@@ -2100,7 +2100,7 @@ class GanColorCombo(ComboGANModel):
             self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_C_B, self.DC)
             fake_BC = self.fake_pools[self.DC].query(self.fake_BC)
             self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_BC, self.DC)
-            self.loss_D[self.DC].backward()
+            (self.loss_D[self.DC]/3).backward()
 
     def get_current_visuals(self, testing=False):
         if not testing:

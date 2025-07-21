@@ -52,7 +52,7 @@ class BaseModel():
             save_filename = f'{epoch}_net_{network_label}'
             save_path = os.path.join(self.save_dir, save_filename)
         else:
-            save_filename = [f'{e}_net_{network_label}' for e in epoch]
+            save_filename = [f'{e}_net_{network_label}' for net, e in epoch.items() if network_label in net]
             save_path = [os.path.join(self.save_dir, fn) for fn in save_filename]
         network.load(save_path)
 
