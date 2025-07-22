@@ -1053,6 +1053,9 @@ class GanColorCombo(ComboGANModel):
                     real_BC_pred, _ = self.netS.forward(real_BC_s, self.DC)
                     fake_A_BC_s = F.interpolate(self.fake_A_BC, size=[rand_size, rand_size], mode='bilinear',
                                               align_corners=False)
+                    fake_C_A_s = F.interpolate(self.fake_C_A, size=[rand_size, rand_size], mode='bilinear',
+                                               align_corners=False)
+                    fake_C_A_pred, _ = self.netS.forward(fake_C_A_s, self.DC)
                     fake_A_BC_pred_d, _ = self.netS.forward(fake_A_BC_s.detach(), self.DA)
 
                     # real_BC_pred_d = real_BC_pred.detach()
@@ -1102,7 +1105,7 @@ class GanColorCombo(ComboGANModel):
                                                                                              19, self.gpu_ids[0]))
 
                 self.loss_S_rec[self.DA] += self.lambda_sc * seg_loss_A(fake_B_pred, self.SegMask_A_update.long())
-                self.loss_S_rec[self.DA] += self.lambda_sc * seg_loss_A(fake_C_A_pred_d, self.SegMask_A_update.long())
+                self.loss_S_rec[self.DA] += self.lambda_sc * seg_loss_A(fake_C_A_pred, self.SegMask_A_update.long())
                 self.SegMask_B_update = self.UpdateIRGTv2(real_B_pred.detach(), fake_A_BC_pred_d,
                                                           SegMask_B_s[0].long(), real_B_s, self.IR_prob_th)
 
