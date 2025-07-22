@@ -1167,6 +1167,9 @@ class GanColorCombo(ComboGANModel):
             ##########Fake_IR_Composition, OAMix-TIR
             FakeIR_FG_Mask, out_FG_FakeIR, out_FG_RealVis, FakeIR_FG_Mask_flip, out_FG_FakeIR_flip, out_FG_RealVis_flip, FakeIR_FG_Mask_ori, HL_Mask, ComIR_Light_Mask = \
                 self.get_FG_MergeMask(self.SegMask_A.detach(), fake_A_Mask, real_A_s, fake_B_s.detach(), self.gpu_ids[0])
+            for p in (FakeIR_FG_Mask, FakeIR_FG_Mask_flip, out_FG_FakeIR, out_FG_FakeIR_flip,
+                                          real_B_s.detach(), self.SegMask_B_update.detach(), HL_Mask):
+                print(p.shape)
             self.IR_com = self.get_IR_Com(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, out_FG_FakeIR, out_FG_FakeIR_flip,
                                           real_B_s.detach(), self.SegMask_B_update.detach(), HL_Mask)
             ##########
