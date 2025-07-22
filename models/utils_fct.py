@@ -520,8 +520,7 @@ def getLightDarkRegionMean(cls_idx, input_img, input_mask, ref_img, gpu_ids=[]):
         .299 * input_img[:, 0:1, :, :] + .587 * input_img[:, 1:2, :, :] + .114 * input_img[:, 2:3, :, :])
     ref_img_gray = torch.squeeze(
         .299 * ref_img[:, 0:1, :, :] + .587 * ref_img[:, 1:2, :, :] + .114 * ref_img[:, 2:3, :, :])
-    light_mask_ori = torch.where(input_mask == cls_idx, 1., 0.)
-    print(light_mask_ori.shape)
+    light_mask_ori = torch.where(input_mask == cls_idx, 1., 0.).sum(dim=1, keepdim=True)
     max_pool_k3 = nn.MaxPool2d(kernel_size=5, stride=1, padding=2)
     Light_mask = torch.squeeze(-max_pool_k3(- light_mask_ori))
     light_region_area = torch.sum(Light_mask)
@@ -531,8 +530,7 @@ def getLightDarkRegionMean(cls_idx, input_img, input_mask, ref_img, gpu_ids=[]):
         Light_region_mean = torch.sum(Light_region) / light_region_area
 
         Light_region_filling_one = Light_region + 1 - Light_mask
-        Light_Dark_Region_Mask = torch.where(Light_region_filling_one < Light_region_mean, torch.ones_like(Light_mask),
-                                             torch.zeros_like(Light_mask))
+        Light_Dark_Region_Mask = torch.where(Light_region_filling_one < Light_region_mean, 1., 0.)
         Light_Dark_Region_Mean = torch.sum(Light_Dark_Region_Mask.mul(input_img_gray)) / torch.sum(
             Light_Dark_Region_Mask)
 
@@ -544,7 +542,7 @@ def getLightDarkRegionMean(cls_idx, input_img, input_mask, ref_img, gpu_ids=[]):
         ###Compute channle mean.
         input_img_3dim = torch.squeeze(input_img)
         input_img_DR_Masked = input_img_3dim.mul(Light_Dark_Region_Mask)
-        input_img_DR_mean_3dim = torch.sum(input_img_DR_Masked, dim=0, keepdim=True) / 3.0  #3*h*w
+        input_img_DR_mean_3dim = torch.mean(input_img_DR_Masked, dim=0, keepdim=True)  #3*h*w
         input_img_DR_submean = (input_img_DR_Masked - input_img_DR_mean_3dim) ** 2
         input_img_DR_var = torch.max(torch.sum(input_img_DR_submean, dim=0))
 
