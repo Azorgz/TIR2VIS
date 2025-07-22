@@ -1047,6 +1047,7 @@ class GanColorCombo(ComboGANModel):
                     fake_C_A_s = F.interpolate(self.fake_C_A, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
                     fake_C_A_pred_d, _ = self.netS.forward(fake_C_A_s.detach(), self.DC)
                 elif self.epoch > 40:  # epoch 41-100
+                    fake_A_pred_d, _ = self.netS.forward(fake_A_s.detach(), self.DB)
                     fake_B_pred, _ = self.netS.forward(fake_B_s, self.DB)
                     real_BC_s = F.interpolate(self.fake_BC, size=[rand_size, rand_size], mode='bilinear',
                                               align_corners=False)
