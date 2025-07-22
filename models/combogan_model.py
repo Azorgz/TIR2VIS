@@ -1169,7 +1169,7 @@ class GanColorCombo(ComboGANModel):
                 self.get_FG_MergeMask(self.SegMask_A.detach(), fake_A_Mask, self.real_A, self.fake_B.detach(),
                                       self.gpu_ids[0])
             self.IR_com = self.get_IR_Com(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, out_FG_FakeIR, out_FG_FakeIR_flip,
-                                          self.real_B.detach(), self.SegMask_B_update.detach(), HL_Mask)
+                                          real_B_s.detach(), self.SegMask_B_update.detach(), HL_Mask)
             ##########
             encoded_IR_com = self.netG.encode(self.IR_com, self.DB)
             self.fake_A_IR_com = self.netG.decode(encoded_IR_com, self.DA)
