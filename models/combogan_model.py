@@ -944,6 +944,7 @@ class GanColorCombo(ComboGANModel):
         loss_likeness = self.CriterionLikeness(self.fake_C_B * self.mask, self.real_C * self.mask) if self.cond('EB',
                                                                                                               'DC') else self.null
         loss_likeness += self.CriterionLikeness(self.fake_B_C, self.real_B) if self.cond('EC', 'DB') else self.null
+        loss_likeness += self.CriterionLikeness(self.fake_A_C, self.fake_A) if self.cond('EC', 'DA') else self.null * 10
 
         # Cycle loss
         self.loss_cycle = {self.DA: 0, self.DB: 0, self.DC: 0, self.Fus: 0}
@@ -1042,24 +1043,22 @@ class GanColorCombo(ComboGANModel):
                 fake_A_pred_d, _ = self.netS.forward(fake_A_s.detach(), self.DA)
                 real_B_pred, _ = self.netS.forward(real_B_s, self.DB)
                 if 40 >= self.epoch:  # epoch 31-40
-                    if self.alternate == 0:
-                        fake_B_pred_d, _ = self.netS.forward(fake_B_s.detach(), self.DB)
-                    else:
-                        fake_C_A_s = F.interpolate(self.fake_C_A, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
-                        fake_C_A_pred_d, _ = self.netS.forward(fake_C_A_s.detach(), self.DC)
-                    if self.epoch > 40:  # epoch 41-100
-                        fake_B_pred, _ = self.netS.forward(fake_B_s, self.DB)
-                        real_BC_s = F.interpolate(self.fake_BC, size=[rand_size, rand_size], mode='bilinear',
-                                                  align_corners=False)
-                        real_BC_pred, _ = self.netS.forward(real_BC_s, self.DC)
-                        fake_A_BC_s = F.interpolate(self.fake_A_BC, size=[rand_size, rand_size], mode='bilinear',
-                                                  align_corners=False)
-                        fake_A_BC_pred_d, _ = self.netS.forward(fake_A_BC_s.detach(), self.DA)
+                    fake_B_pred_d, _ = self.netS.forward(fake_B_s.detach(), self.DB)
+                    fake_C_A_s = F.interpolate(self.fake_C_A, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
+                    fake_C_A_pred_d, _ = self.netS.forward(fake_C_A_s.detach(), self.DC)
+                elif self.epoch > 40:  # epoch 41-100
+                    fake_B_pred, _ = self.netS.forward(fake_B_s, self.DB)
+                    real_BC_s = F.interpolate(self.fake_BC, size=[rand_size, rand_size], mode='bilinear',
+                                              align_corners=False)
+                    real_BC_pred, _ = self.netS.forward(real_BC_s, self.DC)
+                    fake_A_BC_s = F.interpolate(self.fake_A_BC, size=[rand_size, rand_size], mode='bilinear',
+                                              align_corners=False)
+                    fake_A_BC_pred_d, _ = self.netS.forward(fake_A_BC_s.detach(), self.DA)
 
-                        # real_BC_pred_d = real_BC_pred.detach()
-                        if self.epoch >= 75:  # epoch 75-100
-                            fake_A_BC_s = F.interpolate(self.fake_A_BC, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
-                            fake_A_BC_pred, _ = self.netS.forward(fake_A_BC_s, self.DA)
+                    # real_BC_pred_d = real_BC_pred.detach()
+                    if self.epoch >= 75:  # epoch 75-100
+                        fake_A_BC_s = F.interpolate(self.fake_A_BC, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
+                        fake_A_BC_pred, _ = self.netS.forward(fake_A_BC_s, self.DA)
 
         self.loss_S_rec = {self.DA: 0.0, self.DB: 0.0, self.DC: 0.0}
         self.loss_S_enc = {self.DA: 0.0, self.DB: 0.0, self.DC: 0.0}
@@ -1083,12 +1082,10 @@ class GanColorCombo(ComboGANModel):
                                                                  0.5 * self.criterionSemEdge(real_A_pred,
                                                                                              self.SegMask_A_update.long(),
                                                                                              19, self.gpu_ids[0]))
-                if self.alternate == 0:
-                    if self.cond('B', dom='S'):
-                        self.loss_S_enc[self.DB] += self.lambda_sc * self.seg_loss(fake_B_pred_d, self.SegMask_A_update.long())
-                else:
-                    if self.cond('C', dom='S'):
-                        self.loss_S_enc[self.DC] += self.lambda_sc * self.seg_loss(fake_C_A_pred_d, self.SegMask_A_update.long())
+                if self.cond('B', dom='S'):
+                    self.loss_S_enc[self.DB] += self.lambda_sc * self.seg_loss(fake_B_pred_d, self.SegMask_A_update.long())
+                if self.cond('C', dom='S'):
+                    self.loss_S_enc[self.DC] += self.lambda_sc * self.seg_loss(fake_C_A_pred_d, self.SegMask_A_update.long())
                 self.SegMask_B_update = self.UpdateIRGTv1(real_B_pred.detach(), fake_A_pred_d,
                                                           255 * torch.ones_like(SegMask_A_s[0].long()), real_B_s,
                                                           self.IR_prob_th)
