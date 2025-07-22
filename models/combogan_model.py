@@ -883,8 +883,11 @@ class GanColorCombo(ComboGANModel):
         encoded_B = encoded_B.detach() if not self.cond('EB') else encoded_B
         encoded_C = encoded_C.detach() if not self.cond('EC') else encoded_C
 
-        encoded_BC = self.netG.fusion_features(encoded_B, encoded_C, self.mask, self.real_B, self.real_C)
-        encoded_BC = encoded_BC.detach() if not self.cond('Fus') else encoded_BC
+        if self.cond('Fus'):
+            encoded_BC = self.netG.fusion_features(encoded_B, encoded_C, self.mask, self.real_B, self.real_C)
+            encoded_BC = encoded_BC.detach() if not self.cond('Fus') else encoded_BC
+        else:
+            encoded_BC = None
 
 
         # Optional identity "autoencode" loss ###############################
@@ -911,9 +914,10 @@ class GanColorCombo(ComboGANModel):
         self.loss_G[2] += self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A_C, self.DA), False) \
             if self.cond('EC', 'DA') else self.null
         # D_A(G_A(Fus))
-        self.fake_A_BC = self.netG.decode(encoded_BC, self.DA)
-        self.loss_G[3] = self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A_BC, self.DA), False) \
-            if self.cond('EC', 'Fus', 'DA', 'EB') else self.null
+        if self.cond('Fus'):
+            self.fake_A_BC = self.netG.decode(encoded_BC, self.DA)
+            self.loss_G[3] = self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A_BC, self.DA), False) \
+                if self.cond('EC', 'Fus', 'DA', 'EB') else self.null
         # D_B(G_B(A))
         self.fake_B = self.netG.decode(encoded_A, self.DB)
         self.loss_G[0] += self.criterionGAN(self.pred_real_B, self.netD.forward(self.fake_B, self.DB), False) \
@@ -931,9 +935,10 @@ class GanColorCombo(ComboGANModel):
         self.loss_G[1] += self.criterionGAN(self.pred_real_C, self.netD.forward(self.fake_C_B, self.DC), False) \
             if self.cond('DC', 'EB') else self.null
         # D_C(G_C(Fus))
-        self.fake_BC = self.netG.decode(encoded_BC, self.DC)
-        self.loss_G[3] += self.criterionGAN(self.pred_real_C, self.netD.forward(self.fake_BC, self.DC), False) \
-            if self.cond('EB', 'EC', 'Fus', 'DC') else self.null
+        if self.cond('Fus'):
+            self.fake_BC = self.netG.decode(encoded_BC, self.DC)
+            self.loss_G[3] += self.criterionGAN(self.pred_real_C, self.netD.forward(self.fake_BC, self.DC), False) \
+                if self.cond('EB', 'EC', 'Fus', 'DC') else self.null
 
         # loss_likeness
         loss_likeness = self.CriterionLikeness(self.fake_C_B * self.mask, self.real_C * self.mask) if self.cond('EB',
@@ -954,8 +959,8 @@ class GanColorCombo(ComboGANModel):
         self.rec_A_C = self.netG.decode(rec_encoded_A_C, self.DA)
         self.loss_cycle[self.DA] += loss_cycle(self.rec_A_C, self.real_A) \
             if self.cond('EC', 'DA', 'EA', 'DC') else self.null
-        self.loss_color = self.null #self.criterionColor(self.rec_A_C, self.real_A, self.SegMask_A) * self.lambda_color \
-            # if self.cond('EC', 'DA', 'EA', 'DC') else self.null
+        self.loss_color = self.criterionColor(self.rec_A_C, self.real_A, self.SegMask_A) * self.lambda_color \
+            if self.cond('EC', 'DA', 'EA', 'DC') else self.null
 
         # Forward cycle loss for domain B
         rec_encoded_B = self.netG.encode(self.fake_A.detach(), self.DA)
@@ -968,20 +973,21 @@ class GanColorCombo(ComboGANModel):
             if self.cond('EC', 'DB', 'EB', 'DC') else self.null
 
         # Fusion cycle loss
-        rec_encoded_BC = self.netG.encode(self.fake_A_BC.detach(), self.DA)
-        self.rec_C_A_BC = self.netG.decode(rec_encoded_BC, self.DC)
-        self.rec_B_A_BC = self.netG.decode(rec_encoded_BC, self.DB)
-        self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A_BC * self.mask, self.real_C * self.mask) \
-            if self.cond('DC', 'EC', 'Fus', 'EA', 'DA') else self.null
-        self.loss_cycle[self.DC] += loss_cycle(self.rec_B_A_BC, self.real_B) \
-            if self.cond('EC', 'Fus', 'DB', 'EA', 'DA') else self.null
-        rec_encoded_BC = self.netG.encode(self.fake_BC.detach(), self.DC)
-        self.rec_B_BC = self.netG.decode(rec_encoded_BC, self.DB)
-        self.rec_C_BC = self.netG.decode(rec_encoded_BC, self.DC)
-        self.loss_cycle[self.Fus] += loss_cycle(self.rec_C_BC * self.mask, self.real_C * self.mask) \
-            if self.cond('DC', 'EC', 'Fus') else self.null
-        self.loss_cycle[self.Fus] += loss_cycle(self.rec_B_BC, self.real_B) \
-            if self.cond('EC', 'Fus') else self.null
+        if self.cond('Fus'):
+            rec_encoded_BC = self.netG.encode(self.fake_A_BC.detach(), self.DA)
+            self.rec_C_A_BC = self.netG.decode(rec_encoded_BC, self.DC)
+            self.rec_B_A_BC = self.netG.decode(rec_encoded_BC, self.DB)
+            self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A_BC * self.mask, self.real_C * self.mask) \
+                if self.cond('DC', 'EC', 'Fus', 'EA', 'DA') else self.null
+            self.loss_cycle[self.DC] += loss_cycle(self.rec_B_A_BC, self.real_B) \
+                if self.cond('EC', 'Fus', 'DB', 'EA', 'DA') else self.null
+            rec_encoded_BC = self.netG.encode(self.fake_BC.detach(), self.DC)
+            self.rec_B_BC = self.netG.decode(rec_encoded_BC, self.DB)
+            self.rec_C_BC = self.netG.decode(rec_encoded_BC, self.DC)
+            self.loss_cycle[self.Fus] += loss_cycle(self.rec_C_BC * self.mask, self.real_C * self.mask) \
+                if self.cond('DC', 'EC', 'Fus') else self.null
+            self.loss_cycle[self.Fus] += loss_cycle(self.rec_B_BC, self.real_B) \
+                if self.cond('EC', 'Fus') else self.null
 
         # Forward cycle loss for domain C
         rec_encoded_A_C = self.netG.encode(self.fake_A_C, self.DA)
@@ -1002,10 +1008,11 @@ class GanColorCombo(ComboGANModel):
                                                                                                'DA') else self.null
         self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_B_C) if self.cond('EC',
                                                                                                'DB') else self.null
-        self.loss_tv[self.Fus] += self.lambda_tv * self.criterionTV(self.fake_A_BC) if self.cond('Fus', 'EC', 'EB',
-                                                                                                 'DA') else self.null
-        self.loss_tv[self.Fus] += self.lambda_tv * self.criterionTV(self.fake_BC) if self.cond('Fus', 'EC', 'DC',
-                                                                                               'EB') else self.null
+        if self.cond('Fus'):
+            self.loss_tv[self.Fus] += self.lambda_tv * self.criterionTV(self.fake_A_BC) if self.cond('Fus', 'EC', 'EB',
+                                                                                                     'DA') else self.null
+            self.loss_tv[self.Fus] += self.lambda_tv * self.criterionTV(self.fake_BC) if self.cond('Fus', 'EC', 'DC',
+                                                                                                   'EB') else self.null
 
 
         # Optional semantic consistency loss on encoded and rec_encoded features, added by lfy
@@ -1256,8 +1263,13 @@ class GanColorCombo(ComboGANModel):
             ###Conditional Gradient Repair loss
             ########Domain-specific losses include CGR loss and ACA loss.
             self.loss_DS[self.DB] += self.lambda_CGR * self.criterionCGR(self.fake_A, self.SegMask_B_update[None].detach(), self.real_B.detach(), self.gpu_ids[0])
-            self.loss_DS[self.DC] += self.lambda_CGR * self.criterionCGR(self.fake_A_BC, self.SegMask_B_update[None].detach(), self.real_Fus.detach(), self.gpu_ids[0])
-            self.loss_DS[self.DA] = self.criterionACA(self.SegMask_A_update.detach(), encoded_A.detach(), \
+            if self.cond('Fus'):
+                self.loss_DS[self.DC] += self.lambda_CGR * self.criterionCGR(self.fake_A_BC, self.SegMask_B_update[None].detach(), self.real_Fus.detach(), self.gpu_ids[0])
+            elif self.cond('EC'):
+                self.loss_DS[self.DC] += self.lambda_CGR * self.criterionCGR(self.fake_A_C,
+                                                                             self.SegMask_B_update[None].detach(),
+                                                                             self.real_C.detach(), self.gpu_ids[0])
+            self.loss_DS[self.DA] += self.criterionACA(self.SegMask_A_update.detach(), encoded_A.detach(), \
                                                       self.SegMask_B_update.detach(), rec_encoded_B, 4, 100000,
                                                       self.gpu_ids[0])
         # Optional structure constraint loss on generate fake images, added by lfy
@@ -1292,9 +1304,10 @@ class GanColorCombo(ComboGANModel):
 
         # Optional cycle loss on encoding space
         if self.lambda_enc > 0:
-            loss_enc_A = self.criterionLatent(rec_encoded_A, encoded_A)
-            loss_enc_B = self.criterionLatent(rec_encoded_B, encoded_B)
-            loss_enc = loss_enc_A + loss_enc_B
+            loss_enc_A = self.criterionLatent(rec_encoded_A, encoded_A) if self.cond('EA') else self.null
+            loss_enc_B = self.criterionLatent(rec_encoded_B, encoded_B) if self.cond('EB') else self.null
+            loss_enc_C = (self.criterionLatent(rec_encoded_B_C, encoded_C) + self.criterionLatent(rec_encoded_A_C, encoded_C)) if self.cond('EC') else self.null
+            loss_enc = loss_enc_A + loss_enc_B + loss_enc_C
         else:
             loss_enc = 0
 
@@ -1302,9 +1315,9 @@ class GanColorCombo(ComboGANModel):
         if self.lambda_fwd > 0:
             loss_fwd_A = self.criterionIdt(self.fake_B, self.real_A)
             loss_fwd_B = self.criterionIdt(self.fake_A, self.real_B)
-            loss_fwd_C_A = (self.criterionIdt(self.fake_C_A, self.real_A) +
-                            self.criterionIdt(self.fake_A_C * self.mask, self.real_C * self.mask))
-            loss_fwd = loss_fwd_A + loss_fwd_B + loss_fwd_C_A
+            loss_fwd_C = (self.criterionIdt(self.fake_C_B * self.mask, self.real_C * self.mask) +
+                            self.criterionIdt(self.fake_B_C * self.mask, self.real_B * self.mask))
+            loss_fwd = loss_fwd_A + loss_fwd_B + loss_fwd_C
         else:
             loss_fwd = 0
 
