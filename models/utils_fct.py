@@ -520,9 +520,8 @@ def getLightDarkRegionMean(cls_idx, input_img, input_mask, ref_img, gpu_ids=[]):
         .299 * input_img[:, 0:1, :, :] + .587 * input_img[:, 1:2, :, :] + .114 * input_img[:, 2:3, :, :])
     ref_img_gray = torch.squeeze(
         .299 * ref_img[:, 0:1, :, :] + .587 * ref_img[:, 1:2, :, :] + .114 * ref_img[:, 2:3, :, :])
-    light_mask_ori = torch.zeros_like(input_mask)
-    light_mask_ori = torch.where(input_mask == cls_idx, torch.ones_like(light_mask_ori),
-                                 torch.zeros_like(light_mask_ori))
+    light_mask_ori = torch.where(input_mask == cls_idx, 1., 0.)
+    print(light_mask_ori.shape)
     max_pool_k3 = nn.MaxPool2d(kernel_size=5, stride=1, padding=2)
     Light_mask = torch.squeeze(-max_pool_k3(- light_mask_ori))
     light_region_area = torch.sum(Light_mask)
