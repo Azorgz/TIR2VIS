@@ -865,15 +865,7 @@ class ResnetBlock2(nn.Module):
                        norm_layer(dim)]
 
         self.conv_block = SequentialContext(n_domains, *conv_block)
-        self.fus_conv = nn.Conv2d(2 * dim, 2 * dim, kernel_size=3, padding=1, bias=use_bias)
-        self.ssim = StructuralSimilarityIndexMeasure(gaussian_kernel=True,
-                                                                 sigma=1.5,
-                                                                 kernel_size=11,
-                                                                 reduction=None,
-                                                                 data_range=None,
-                                                                 k1=0.01, k2=0.03,
-                                                                 return_full_image=True,
-                                                                 return_contrast_sensitivity=False).to('cuda')
+        self.fus_conv = nn.Linear(2 * dim, dim, bias=use_bias)
         self.final_block = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=3, padding=1, bias=use_bias),
                                          norm_layer(dim),
                                          nn.Tanh())
@@ -885,16 +877,11 @@ class ResnetBlock2(nn.Module):
             mask, image_ir_, image_rgb = None, None, None
         if isinstance(inp, tuple):
             x, y = inp
-            b, c, h, w = x.shape
             x_ = x
             y_ = self.conv_block(y)
             y_ = self.filter(y_, mask) if mask is not None else y_
-            xy_ = torch.cat([x_, y_], dim=1)
-            res = self.fus_conv(xy_)
-            x_, y_ = res.split(c, 1)
-            mask = F.interpolate(self.compute_mask(image_ir_, image_rgb), (h, w)) if image_rgb is not None else self.compute_mask(x_, y_)
-            res = mask * x_ + (1-mask) * y_
-            # res = torch.max(torch.cat([x_.reshape(1, -1), y_.reshape(1, -1)]), dim=0)[0]
+            xy_ = torch.cat([x_, y_], dim=1).permute(0, 2, 3, 1)
+            res = self.fus_conv(xy_).permute(0, 3, 1, 2)
             return self.final_block(res)
         return inp + self.conv_block(inp)
 
@@ -904,13 +891,6 @@ class ResnetBlock2(nn.Module):
         filter_r = repeat(mask, 'h w -> b c_f h w', b=b, c_f=c_f)
         filter_s = F.interpolate(filter_r, feat.shape[-2:])
         return feat * filter_s
-
-    def compute_mask(self, feat_x, feat_y):
-        im_x = ImageTensor(feat_x * 0.5 + 1)
-        im_y = ImageTensor(feat_y * 0.5 + 1)
-        _, mask = self.ssim(im_x, im_y)
-        self.ssim.reset()
-        return torch.abs(mask.detach()).mean(dim=1, keepdim=True)
 
 
 class Linear(nn.Linear):
@@ -960,7 +940,6 @@ class ConcatBlock(nn.Module):
         self.gpu_ids = gpu_ids
         act = nn.Tanh()
         conv_block_fus = []
-        conv_block_sep = []
 
         self.dim = dim
         self.n_domains = n_domains
