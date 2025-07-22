@@ -46,7 +46,7 @@ class TrainOptions(BaseOptions):
                                  help='continue training: load the latest model')
         self.parser.add_argument('--which_epoch', type=int, default=37,
                                  help='which epoch to load if continuing training')
-        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default={'G':37, 'G6':'latest', 'S':37, 'D':37}, #'latest', #validate_epoch_load(
+        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default=validate_epoch_load({'G':37, 'G6':'latest', 'S':37, 'D':37}), #'latest', #validate_epoch_load(
             # {'G0': 'latest', 'G1': -1, 'G2': 'latest', 'G3': 'latest', 'G4': -1, 'G5': 'latest', 'G6': 'latest',
             #  'D0': 'latest', 'D2': 'latest', 'S': 'latest'}),
                                  help='which epoch to load if continuing training')
