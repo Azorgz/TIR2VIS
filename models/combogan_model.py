@@ -1171,8 +1171,10 @@ class GanColorCombo(ComboGANModel):
             for m in (FakeIR_FG_Mask, FakeIR_FG_Mask_flip, out_FG_FakeIR, out_FG_FakeIR_flip,
                                           self.real_B.detach(), self.SegMask_B_update.detach(), HL_Mask):
                 print(m.shape)
+            real_B_Mask = F.interpolate(self.SegMask_B_update.detach().expand(1, 19, rand_size, rand_size).float(), size=[256, 256],
+                                        mode='nearest')
             self.IR_com = self.get_IR_Com(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, out_FG_FakeIR, out_FG_FakeIR_flip,
-                                          self.real_B.detach(), self.SegMask_B_update.detach(), HL_Mask)
+                                          self.real_B.detach(), real_B_Mask, HL_Mask)
             ##########
             encoded_IR_com = self.netG.encode(self.IR_com, self.DB)
             self.fake_A_IR_com = self.netG.decode(encoded_IR_com, self.DA)
