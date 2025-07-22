@@ -41,11 +41,9 @@ def TrafLighCorlLoss(real_IR, fake_vis, IR_mask, real_vis, vis_Light_mask, HL_Ma
     max_pool_k5 = nn.MaxPool2d(kernel_size=5, stride=1, padding=2)
     vis_HL_Mask = -max_pool_k5(-max_pool_k5(HL_Mask_ori))
     if torch.sum(vis_HL_Mask) > 0:
-        IR_seg_mask_2D = torch.squeeze(IR_mask)
+        IR_seg_mask_2D = torch.squeeze(IR_mask.argmax(dim=1))
         # h, w = IR_seg_mask_2D.size()
-        IR_Light_mask = torch.zeros_like(IR_seg_mask_2D)
-        IR_Light_mask = torch.where(IR_seg_mask_2D == 6.0, torch.ones_like(IR_seg_mask_2D),
-                                    torch.zeros_like(IR_seg_mask_2D))
+        IR_Light_mask = torch.where(IR_seg_mask_2D == 6.0, 1., 0.)
         if torch.sum(IR_Light_mask) > 100:
             IR_Light_top_mask = get_ROI_top_part_mask(IR_Light_mask, gpu_ids)
             vis_Light_top_mask = vis_Light_mask[0, :, :]
