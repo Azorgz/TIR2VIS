@@ -845,7 +845,7 @@ class GanColorCombo(ComboGANModel):
         self.netG.to(self.gpu_ids[0])
         self.loss_color = torch.Tensor([0.]).to('cuda')
         self.lambda_color = torch.Tensor([opt.lambda_color]).to('cuda')
-        self.criterionColor = lambda x, y, z: ColorLoss(x, y, z)
+        self.criterionColor = ColorLoss
         self.simple_train_channel = 0, 1
         self.set_partial_train()
         self.rec_A, self.rec_B, self.rec_C, self.rec_BC = None, None, None, None
@@ -943,8 +943,8 @@ class GanColorCombo(ComboGANModel):
         self.fake_C_A = self.netG.decode(encoded_A, self.DC)
         self.loss_G[0] += self.criterionGAN(self.pred_real_C, self.netD.forward(self.fake_C_A, self.DC), False) \
             if (self.cond('DC', 'EA')) else self.null
-        self.loss_color += self.criterionColor(self.fake_C_A, self.real_A, self.SegMask_A) * self.lambda_color \
-            if self.cond('DA', 'DC') else self.null
+        # self.loss_color += self.criterionColor(self.fake_C_A, self.real_A, self.SegMask_A) * self.lambda_color \
+        #     if self.cond('DA', 'DC') else self.null
         # D_C(G_C(B))
         self.fake_C_B = self.netG.decode(encoded_B, self.DC)
         self.loss_G[1] += self.criterionGAN(self.pred_real_C, self.netD.forward(self.fake_C_B, self.DC), False) \
@@ -975,7 +975,7 @@ class GanColorCombo(ComboGANModel):
         self.rec_A_C = self.netG.decode(rec_encoded_A_C, self.DA)
         self.loss_cycle[self.DA] += loss_cycle(self.rec_A_C, self.real_A) \
             if self.cond('EC', 'DA', 'EA', 'DC') else self.null
-        self.loss_color += self.criterionColor(self.rec_A_C, self.real_A, self.SegMask_A) * self.lambda_color \
+        self.loss_color += self.criterionColor(self.rec_A_C, self.real_A, self.SegMask_A, chroma=True) * self.lambda_color \
             if self.cond('EC', 'DA', 'EA', 'DC') else self.null
 
         # Forward cycle loss for domain B
@@ -1879,9 +1879,10 @@ class GanColorCombo(ComboGANModel):
         self.loss_tv[self.DA] = self.lambda_tv * self.criterionTV(self.fake_A)
         self.loss_tv[self.DB] = self.lambda_tv * self.criterionTV(self.fake_B)
 
-        self.loss_color = self.lambda_color * self.criterionColor(self.rec_A, self.real_A, self.SegMask_A)
+        self.loss_color = self.lambda_color * self.criterionColor(self.rec_A, self.real_A, self.SegMask_A, chroma=True)
         if self.DB == 2:
-            self.loss_color += self.lambda_color * self.criterionColor(self.rec_B * self.mask, self.real_B * self.mask, None)
+            self.loss_color += self.lambda_color * self.criterionColor(self.rec_B * self.mask, self.real_B * self.mask, None, chroma=True)
+            self.loss_color += self.lambda_color * self.criterionColor(self.fake_A * self.mask, self.real_B * self.mask, None)
             self.loss_color += self.lambda_color * self.criterionColor(self.fake_B, self.real_A, self.SegMask_A)
 
         # Optional semantic consistency loss on encoded and rec_encoded features, added by lfy
