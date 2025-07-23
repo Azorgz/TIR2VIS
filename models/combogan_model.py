@@ -975,8 +975,8 @@ class GanColorCombo(ComboGANModel):
         self.rec_A_C = self.netG.decode(rec_encoded_A_C, self.DA)
         self.loss_cycle[self.DA] += loss_cycle(self.rec_A_C, self.real_A) \
             if self.cond('EC', 'DA', 'EA', 'DC') else self.null
-        self.loss_color += self.criterionColor(self.rec_A_C, self.real_A, self.SegMask_A, chroma=True) * self.lambda_color \
-            if self.cond('EC', 'DA', 'EA', 'DC') else self.null
+        # self.loss_color += self.criterionColor(self.rec_A_C, self.real_A, self.SegMask_A, chroma=True) * self.lambda_color \
+        #     if self.cond('EC', 'DA', 'EA', 'DC') else self.null
 
         # Forward cycle loss for domain B
         rec_encoded_B = self.netG.encode(self.fake_A.detach(), self.DA)
@@ -1855,11 +1855,11 @@ class GanColorCombo(ComboGANModel):
         # D_A(G_A(A))
         self.fake_B = self.netG.decode(encoded_A, self.DB)
         pred_fake_B = self.netD.forward(self.fake_B, self.DB)
-        self.loss_G[self.DA] += self.criterionGAN(self.pred_real_B, pred_fake_B, False)
+        self.loss_G[self.DA] += self.criterionGAN(self.pred_real_B, pred_fake_B, False) * 2
         # D_B(G_B(B))
         self.fake_A = self.netG.decode(encoded_B, self.DA)
         pred_fake_A = self.netD.forward(self.fake_A, self.DA)
-        self.loss_G[self.DB] += self.criterionGAN(self.pred_real_A, pred_fake_A, False)
+        self.loss_G[self.DB] += self.criterionGAN(self.pred_real_A, pred_fake_A, False) * 2
 
         self.loss_cycle = {self.DA: 0., self.DB: 0.}
         # Forward cycle loss

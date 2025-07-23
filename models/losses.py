@@ -746,14 +746,14 @@ def ColorLoss(image_fake, image_target, GT_seg, chroma=False):
     color_target = im_target[0, 1:]
     colorAngle_fake = torch.arctan(color_fake[1]/color_fake[0])
     colorAngle_real = torch.arctan(color_target[1]/color_target[0])
+    Chroma_fake = torch.sqrt(color_fake[1] ** 2 + color_fake[0] ** 2)
+    Chroma_real = torch.sqrt(color_target[1] ** 2 + color_target[0] ** 2)
     if chroma:
-        Chroma_fake = torch.sqrt(color_fake[1]**2 + color_fake[0]**2)
-        Chroma_real = torch.sqrt(color_target[1]**2 + color_target[0]**2)
         chroma_loss = torch.sqrt(torch.sum((Chroma_fake - Chroma_real) ** 2) + 1e-6) / color_fake.shape[-1]**2
     else:
         chroma_loss = 0
-    loss_color = torch.sqrt(torch.sum(torch.cos(colorAngle_fake - colorAngle_real) ** 2) + 1e-6) / color_fake.shape[-1]**2 + chroma_loss
-
+    loss_color = torch.sqrt(torch.sum(torch.cos(colorAngle_fake - colorAngle_real) ** 2) + 1e-6) / color_fake.shape[-1]**2
+    loss_color = torch.log(chroma_loss + loss_color)
 
     if GT_seg is not None:
         ssim = SSIM_Loss(win_size=11, data_range=1.0, size_average=True, channel=1)
