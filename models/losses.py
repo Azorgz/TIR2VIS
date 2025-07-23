@@ -3,7 +3,9 @@ import torch
 from torch import nn
 from pytorch_msssim import SSIM
 import torch.nn.functional as F
+from torchvision.transforms.v2.functional import gaussian_blur
 
+from ImagesCameras import ImageTensor
 from models.networks import Vgg16, Get_gradmag_gray, RGBuvHistBlock
 from models.utils_fct import get_ROI_top_part_mask, GetFeaMatrixCenter, bhw_to_onehot, ClsMeanPixelValue, \
     getLightDarkRegionMean, RefineLightMask, split_im
@@ -637,90 +639,170 @@ def GANLoss(inputs_real, inputs_fake, is_discr):
 
 
 def HistogramLoss(fake_im, real_color, GT_seg):
-    size = fake_im.shape[-1]//8
+    chunk_nb = 4
+    size = fake_im.shape[-1]//chunk_nb
     hist_block = RGBuvHistBlock(insz=size, h=64,
                  intensity_scale=True,
                  method='inverse-quadratic',
                  device=fake_im.device)
-    histogram_loss = lambda target_hist, input_hist : (1 / np.sqrt(2.0) * (torch.sqrt(torch.sum(
-        torch.pow(torch.sqrt(target_hist) - torch.sqrt(input_hist), 2)))) /
+    histogram_loss = lambda target_hist, input_hist: (1 / np.sqrt(2.0) * (torch.sqrt(torch.sum(
+        torch.pow(torch.sqrt(target_hist) - torch.sqrt(input_hist), 2))+1e-6)) /
                       input_hist.shape[0])
     losses = []
     # Cars color
-    mask = torch.where(GT_seg == 13, 1., 0.)
-    if torch.sum(mask) > 0:
-        fake = split_im(fake_im * mask, 8)
-        real = split_im(real_color * mask, 8)
-        loss = 0.
-        for i in range(64):
-            if torch.sum(fake[:, :, i]) > 0:
-                hist_fake = hist_block(fake[:, :, i])
-                hist_real = hist_block(real[:, :, i])
-                loss += histogram_loss(hist_real, hist_fake)
-        losses.append(loss)
-    # Trucks color
-    mask = torch.where(GT_seg == 14, 1., 0.)
-    if torch.sum(mask) > 0:
-        fake = split_im(fake_im * mask, 8)
-        real = split_im(real_color * mask, 8)
-        loss = 0.
-        for i in range(64):
-            if torch.sum(fake[:, :, i]) > 0:
-                hist_fake = hist_block(fake[:, :, i])
-                hist_real = hist_block(real[:, :, i])
-                loss += histogram_loss(hist_real, hist_fake)
-        losses.append(loss*2)
-    # Buildings color
-    mask = torch.where(GT_seg == 2, 1., 0.)
-    if torch.sum(mask) > 0:
-        fake = split_im(fake_im * mask, 8)
-        real = split_im(real_color * mask, 8)
-        loss = 0.
-        for i in range(64):
-            if torch.sum(fake[:, :, i]) > 0:
-                hist_fake = hist_block(fake[:, :, i])
-                hist_real = hist_block(real[:, :, i])
-                loss += histogram_loss(hist_real, hist_fake)
-        losses.append(loss*0.2)
-    # Motorcycle color
-    mask = torch.where(GT_seg == 17, 1., 0.)
-    if torch.sum(mask) > 0:
-        fake = split_im(fake_im * mask, 8)
-        real = split_im(real_color * mask, 8)
-        loss = 0.
-        for i in range(64):
-            if torch.sum(fake[:, :, i]) > 0:
-                hist_fake = hist_block(fake[:, :, i])
-                hist_real = hist_block(real[:, :, i])
-                loss += histogram_loss(hist_real, hist_fake)
-        losses.append(loss)
-    # Traffic sign color
-    mask = torch.where(GT_seg == 7, 1., 0.)
-    if torch.sum(mask) > 0:
-        fake = split_im(fake_im * mask, 8)
-        real = split_im(real_color * mask, 8)
-        loss = 0.
-        for i in range(64):
-            if torch.sum(fake[:, :, i]) > 0:
-                hist_fake = hist_block(fake[:, :, i])
-                hist_real = hist_block(real[:, :, i])
-                loss += histogram_loss(hist_real, hist_fake)
-        losses.append(loss)
-    # Road color
-    mask = torch.where(GT_seg == 2, 1., 0.)
-    if torch.sum(mask) > 0:
-        fake = fake_im * mask
-        real = real_color * mask
-        fake = split_im(fake * (fake > fake.mean()*1.25), 8)
-        real = split_im(real * (real > real.mean()*1.25), 8)
-        loss = 0.
-        for i in range(64):
-            if torch.sum(fake[:, :, i]) > 0:
-                hist_fake = hist_block(fake[:, :, i])
-                hist_real = hist_block(real[:, :, i])
-                loss += histogram_loss(hist_real, hist_fake)
-        losses.append(loss)
+    fake_im = fake_im*0.5 + 0.5
+    real_color = real_color*0.5 + 0.5
+    if GT_seg is None:
+        chunk_nb = 1
+        size = fake_im.shape[-1] // chunk_nb
+        hist_block = RGBuvHistBlock(insz=size, h=16,
+                                    intensity_scale=True,
+                                    method='inverse-quadratic',
+                                    device=fake_im.device)
+        hist_fake = hist_block(fake_im)
+        hist_real = hist_block(real_color)
+        losses.append(histogram_loss(hist_real, hist_fake))
+    else:
+        mask = torch.where(GT_seg == 13, 1., 0.)
+        if torch.sum(mask) > 0:
+            fake = split_im(fake_im * mask, chunk_nb)
+            real = split_im(real_color * mask, chunk_nb)
+            loss = 0.
+            for i in range(chunk_nb**2):
+                if torch.sum(fake[:, :, i]) > 0:
+                    hist_fake = hist_block(fake[:, :, i])
+                    hist_real = hist_block(real[:, :, i])
+                    loss += histogram_loss(hist_real, hist_fake)
+            losses.append(loss)
+        # Trucks color
+        mask = torch.where(GT_seg == 14, 1., 0.)
+        if torch.sum(mask) > 0:
+            fake = split_im(fake_im * mask, chunk_nb)
+            real = split_im(real_color * mask, chunk_nb)
+            loss = 0.
+            for i in range(chunk_nb**2):
+                if torch.sum(fake[:, :, i]) > 0:
+                    hist_fake = hist_block(fake[:, :, i])
+                    hist_real = hist_block(real[:, :, i])
+                    loss += histogram_loss(hist_real, hist_fake)
+            losses.append(loss*2)
+        # Buildings color
+        mask = torch.where(GT_seg == 2, 1., 0.)
+        if torch.sum(mask) > 0:
+            fake = split_im(fake_im * mask, chunk_nb)
+            real = split_im(real_color * mask, chunk_nb)
+            loss = 0.
+            for i in range(chunk_nb**2):
+                if torch.sum(fake[:, :, i]) > 0:
+                    hist_fake = hist_block(fake[:, :, i])
+                    hist_real = hist_block(real[:, :, i])
+                    loss += histogram_loss(hist_real, hist_fake)
+            losses.append(loss*0.2)
+        # Motorcycle color
+        mask = torch.where(GT_seg == 17, 1., 0.)
+        if torch.sum(mask) > 0:
+            fake = split_im(fake_im * mask, chunk_nb)
+            real = split_im(real_color * mask, chunk_nb)
+            loss = 0.
+            for i in range(chunk_nb**2):
+                if torch.sum(fake[:, :, i]) > 0:
+                    hist_fake = hist_block(fake[:, :, i])
+                    hist_real = hist_block(real[:, :, i])
+                    loss += histogram_loss(hist_real, hist_fake)
+            losses.append(loss)
+        # Traffic sign color
+        mask = torch.where(GT_seg == 7, 1., 0.)
+        if torch.sum(mask) > 0:
+            fake = split_im(fake_im * mask, chunk_nb)
+            real = split_im(real_color * mask, chunk_nb)
+            loss = 0.
+            for i in range(chunk_nb**2):
+                if torch.sum(fake[:, :, i]) > 0:
+                    hist_fake = hist_block(fake[:, :, i])
+                    hist_real = hist_block(real[:, :, i])
+                    loss += histogram_loss(hist_real, hist_fake)
+            losses.append(loss)
+        # Road color
+        mask = torch.where(GT_seg == 2, 1., 0.)
+        if torch.sum(mask) > 0:
+            fake = fake_im * mask
+            real = real_color * mask
+            fake = split_im(fake * (fake > fake.mean()*1.25), chunk_nb)
+            real = split_im(real * (real > real.mean()*1.25), chunk_nb)
+            loss = 0.
+            for i in range(chunk_nb**2):
+                if torch.sum(fake[:, :, i]) > 0:
+                    hist_fake = hist_block(fake[:, :, i])
+                    hist_real = hist_block(real[:, :, i])
+                    loss += histogram_loss(hist_real, hist_fake)
+            losses.append(loss)
     return sum(losses)
+
+
+def ColorLoss(image_fake, image_target, GT_seg):
+    im_fake = ImageTensor(image_fake*0.5 + 0.5).LAB()
+    im_target = ImageTensor(image_target*0.5 + 0.5).LAB()
+    color_fake = im_fake[0, 1:]
+    color_target = im_target[0, 1:]
+    colorAngle_fake = torch.arctan(color_fake[1]/color_fake[0])
+    colorAngle_real = torch.arctan(color_target[1]/color_target[0])
+    Chroma_fake = torch.sqrt(color_fake[1]**2 + color_fake[0]**2)
+    Chroma_real = torch.sqrt(color_target[1]**2 + color_target[0]**2)
+    loss_color = torch.sqrt(torch.sum((colorAngle_fake - colorAngle_real) ** 2) + 1e-6) / color_fake.shape[-1]**2 + \
+                 torch.sqrt(torch.sum((Chroma_fake - Chroma_real) ** 2) + 1e-6) / color_fake.shape[-1]**2
+
+    if GT_seg is not None:
+        ssim = SSIM_Loss(win_size=11, data_range=1.0, size_average=True, channel=1)
+        i_fake = im_fake[0, 0]
+        i_target = im_target[0, 0]
+        losses = [0.]
+        intensity_loss = lambda x, y, m: torch.sqrt((x*m - y*m)**2 + 1e-6) + ssim(x[None]*m[None], y[None]*m[None])
+        tot_mask = 0
+        # Cars color
+        mask = torch.where(GT_seg == 13, 1., 0.)
+        sum_mask = torch.sum(mask)
+        tot_mask += sum_mask
+        if sum_mask > 0:
+            loss = intensity_loss(i_fake, i_target, mask)
+            losses.append((loss - loss.min()).sum()/sum_mask)
+        # Trucks color
+        mask = torch.where(GT_seg == 14, 1., 0.)
+        sum_mask = torch.sum(mask)
+        tot_mask += sum_mask
+        if sum_mask > 0:
+            loss = intensity_loss(i_fake, i_target, mask)
+            losses.append((loss - loss.min()).sum()/sum_mask)
+        # Buildings color
+        mask = torch.where(GT_seg == 2, 1., 0.)
+        sum_mask = torch.sum(mask)
+        tot_mask += sum_mask
+        if sum_mask > 0:
+            loss = intensity_loss(i_fake, i_target, mask)
+            losses.append((loss - loss.min()).sum()/sum_mask)
+        # Motorcycle color
+        mask = torch.where(GT_seg == 17, 1., 0.)
+        sum_mask = torch.sum(mask)
+        tot_mask += sum_mask
+        if sum_mask > 0:
+            loss = intensity_loss(i_fake, i_target, mask)
+            losses.append((loss - loss.min()).sum()/sum_mask)
+        # Traffic sign color
+        mask = torch.where(GT_seg == 7, 1., 0.)
+        sum_mask = torch.sum(mask)
+        tot_mask += sum_mask
+        if sum_mask > 0:
+            loss = intensity_loss(i_fake, i_target, mask)
+            losses.append((loss - loss.min()).sum()/sum_mask*5)
+        # Road color
+        mask = torch.where(GT_seg <= 2, 1., 0.)
+        sum_mask = torch.sum(mask)
+        tot_mask += sum_mask
+        if sum_mask > 0:
+            loss = intensity_loss(i_fake, i_target, mask)
+            losses.append((loss - loss.min()).sum()/sum_mask)
+        loss_color += sum(losses) * tot_mask / color_fake.shape[-1]**2
+    return loss_color
+
 
 
 

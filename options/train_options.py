@@ -44,15 +44,15 @@ class TrainOptions(BaseOptions):
                                  help='continue training: load the latest model')
         self.parser.add_argument('--simple_train', type=bool, default=False,
                                  help='continue training: load the latest model')
-        self.parser.add_argument('--simple_train_channel', type=list, default=[0, 2],
-                                 help='continue training: load the latest model')
-        self.parser.add_argument('--which_epoch', type=int, default=40,
+        self.parser.add_argument('--simple_train_channel', type=list, default=-1,
+                                 help='alternate between 0/1 and 0/2 mod every n steps')
+        self.parser.add_argument('--which_epoch', type=int, default=0,
                                  help='which epoch to load if continuing training')
-        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default=validate_epoch_load({'G': 'latest', 'G6': -1, 'S': 'latest', 'D': 'latest'}), #'latest', #validate_epoch_load(
+        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default=validate_epoch_load({'G': 'latest', 'G2': -1,  'S': 'latest', 'D': 'latest'}), #'latest', #validate_epoch_load(
             # {'G0': 'latest', 'G1': -1, 'G2': 'latest', 'G3': 'latest', 'G4': -1, 'G5': 'latest', 'G6': 'latest',
             #  'D0': 'latest', 'D2': 'latest', 'S': 'latest'}),
                                  help='which epoch to load if continuing training')
-        self.parser.add_argument("--partial_train", type=dict, default=None, #{'G': [0, 2, 3, 5], 'D': [0, 2], 'S': [0, 2]},
+        self.parser.add_argument("--partial_train", type=dict, default={'G': [2, 5, 6], 'D': [2], 'S': [2]},
                                  help="Which domains of G - D - S are trained in ["
                                       "0 - 3: visible Encoder - Decoder"
                                       "1 - 4: IR Encoder - Decoder"
@@ -91,12 +91,12 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for ADAM')
         self.parser.add_argument('--beta1', type=float, default=0.5, help='momentum term of ADAM')
 
-        self.parser.add_argument('--lambda_cycle', type=float, default=5.0, help='weight for cycle loss (A -> B -> A)') #5
+        self.parser.add_argument('--lambda_cycle', type=float, default=3.0, help='weight for cycle loss (A -> B -> A)') #5
         self.parser.add_argument('--lambda_identity', type=float, default=1.0, # 1.0
                                  help='weight for identity "autoencode" mapping (A -> A)')
         self.parser.add_argument('--lambda_latent', type=float, default=0.5, # 0.5
                                  help='weight for latent-space loss (A -> z -> B -> z)')
-        self.parser.add_argument('--lambda_forward', type=float, default=0.2,
+        self.parser.add_argument('--lambda_forward', type=float, default=0.05,
                                  help='weight for forward loss (A -> B; try 0.2)')
         self.parser.add_argument('--lambda_ssim', type=float, default=2.0, help='weight for SSIM loss')
         self.parser.add_argument('--lambda_tv', type=float, default=2.0, help='weight for TV loss') # 5.
@@ -112,7 +112,7 @@ class TrainOptions(BaseOptions):
                                  help='threshold for SGA Loss about gradient of fake IR image')
         self.parser.add_argument('--grad_th_IR', type=float, default=0.8,
                                  help='threshold for SGA Loss about gradient of fake Visible image')
-        self.parser.add_argument('--lambda_color', type=float, default=0.2,
+        self.parser.add_argument('--lambda_color', type=float, default=1.0,
                                  help='weight for color consistence loss')
         self.parser.add_argument('--lambda_sga', type=float, default=0.5,
                                  help='weight for gradient orientation consistence loss')

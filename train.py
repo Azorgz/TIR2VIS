@@ -30,7 +30,7 @@ for epoch in range(opt.which_epoch + 1, opt.niter + opt.niter_decay + 1):
     for i, data in enumerate(bar):
         iter_start_time = time.time()
 
-        model.set_input(data)
+        model.set_input(data, step=i)
         model.optimize_parameters(epoch)
         errors = model.get_current_errors()
         if total_steps % opt.display_freq == 0:
