@@ -46,7 +46,7 @@ class TrainOptions(BaseOptions):
                                  help='continue training: load the latest model')
         self.parser.add_argument('--simple_train_channel', type=list, default=50,
                                  help='alternate between 0/1 and 0/2 mod every n steps')
-        self.parser.add_argument('--which_epoch', type=int, default=50,
+        self.parser.add_argument('--which_epoch', type=int, default=55,
                                  help='which epoch to load if continuing training')
         self.parser.add_argument('--epoch_load', type=validate_epoch_load, default='latest', #validate_epoch_load({'G': 'latest', 'G2': -1,  'S': 'latest', 'D': 'latest'}), #'latest', #validate_epoch_load(
             # {'G0': 'latest', 'G1': -1, 'G2': 'latest', 'G3': 'latest', 'G4': -1, 'G5': 'latest', 'G6': 'latest',
@@ -112,7 +112,7 @@ class TrainOptions(BaseOptions):
                                  help='threshold for SGA Loss about gradient of fake IR image')
         self.parser.add_argument('--grad_th_IR', type=float, default=0.8,
                                  help='threshold for SGA Loss about gradient of fake Visible image')
-        self.parser.add_argument('--lambda_color', type=float, default=0.1,
+        self.parser.add_argument('--lambda_color', type=float, default=0.05,
                                  help='weight for color consistence loss')
         self.parser.add_argument('--lambda_sga', type=float, default=0.5,
                                  help='weight for gradient orientation consistence loss')
