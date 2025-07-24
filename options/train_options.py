@@ -42,7 +42,7 @@ class TrainOptions(BaseOptions):
 
         self.parser.add_argument('--continue_train', type=bool, default=True,
                                  help='continue training: load the latest model')
-        self.parser.add_argument('--simple_train', type=bool, default=False,
+        self.parser.add_argument('--simple_train', type=bool, default=True,
                                  help='continue training: load the latest model')
         self.parser.add_argument('--simple_train_channel', type=int, default=0,
                                  help='alternate between 0/1 and 0/2 mod every n steps')
