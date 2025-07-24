@@ -91,13 +91,13 @@ class EBGCDataset(BaseDataset):
         ssim = SSIM(torch.device('cpu'))
         lab = ImageTensor(img1).LAB()
         image_target = lab[:, :1]
-        image_ref = ImageTensor(img2).RGB('gray')
+        image_ref = ImageTensor(img2).LAB()[:, :1]
         ssim_mask = ssim(image_target, image_ref, return_image=True)
         ssim_mask = ssim_mask.GRAY().resize(image_target.shape[-2:])
         ssim_mask = guided_blur(image_ref, ssim_mask, 5, 0.1)
-        ssim_fused_L = lab[:, :1] * ssim_mask + (1 - ssim_mask) * img2.GRAY()
+        ssim_fused_L = lab[:, :1] * ssim_mask + (1 - ssim_mask) * image_ref
         # ssim_fused_L = img2.GRAY()
-        lab = self.color_clamp(lab, ssim_mask)
+        # lab = self.color_clamp(lab, ssim_mask)
         lab[:, :1] = ssim_fused_L
         return lab.RGB().detach()
 

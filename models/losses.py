@@ -1,3 +1,5 @@
+import math
+
 import numpy as np
 import torch
 from torch import nn
@@ -13,7 +15,7 @@ from models.utils_fct import get_ROI_top_part_mask, GetFeaMatrixCenter, bhw_to_o
 
 class SSIM_Loss(SSIM):
     def forward(self, img1, img2):
-        return (1 - super(SSIM_Loss, self).forward(img1, img2))
+        return 1 - super(SSIM_Loss, self).forward(img1, img2)
 
 
 # Defines the total variation (TV) loss, which encourages spatial smoothness in the generated image.
@@ -297,19 +299,15 @@ def FakeIRPersonLossv2(Seg_mask, fake_IR, real_vis, gpu_ids=[]):
     b, c, h, w = fake_IR.size()
     _, seg_h, seg_w = Seg_mask.size()
     GT_mask_resize = F.interpolate(Seg_mask.expand(1, 1, seg_h, seg_w).float(), size=[h, w], mode='nearest')
-    # real_mask_resize = F.interpolate(real_mask.expand(1, 1, seg_h, seg_w).float(), size=[h, w], mode='nearest')
-    GT_mask = GT_mask_resize[0]
-    person_mask = torch.zeros_like(GT_mask_resize)
-    person_mask = torch.where(GT_mask_resize == 11, torch.ones_like(GT_mask_resize), torch.zeros_like(GT_mask_resize))
+    person_mask = torch.where(GT_mask_resize == 11, 1., 0.)
 
     fake_img_norm = (fake_IR + 1.0) * 0.5
-    # real_img_norm = (real_vis + 1.0) * 0.5
     fake_IR_gray = .299 * fake_img_norm[:, 0:1, :, :] + .587 * fake_img_norm[:, 1:2, :, :] + .114 * fake_img_norm[:,
                                                                                                     2:3, :, :]
     fake_mean_fea, fake_cls_tensor, _ = ClsMeanPixelValue(fake_IR_gray, Seg_mask.detach(), 19, gpu_ids)
     if (fake_cls_tensor[11, :] * fake_cls_tensor[0, :]) > 0:
         person_region = (person_mask.expand_as(fake_IR_gray)).mul(fake_IR_gray)
-        non_person_mask = torch.ones_like(person_mask) - person_mask
+        non_person_mask = 1 - person_mask
         person_region_padding1 = person_region + non_person_mask  ####To get person region min value
         road_mean_value = (fake_mean_fea[0, :]).detach()
         person_min_value = torch.min(person_region_padding1)
@@ -372,8 +370,8 @@ def CondGradRepaLoss(fake_img, fake_mask, real_IR, gpu_ids=[]):
     fake_mask_resize = F.interpolate(fake_mask.float(), size=[h, w], mode='nearest')
 
     seg_mask_fake = fake_mask_resize[0]
-    IR_bkg_mask = torch.where(seg_mask_fake < 11.0, torch.ones_like(seg_mask_fake), torch.zeros_like(seg_mask_fake))
-    IR_UC_mask = torch.where(seg_mask_fake == 255.0, torch.ones_like(seg_mask_fake), torch.zeros_like(seg_mask_fake))
+    IR_bkg_mask = torch.where(seg_mask_fake < 11.0, 1., 0.)
+    IR_UC_mask = torch.where(seg_mask_fake == 255.0, 1., 0.)
     IR_bkg_fuse_mask = IR_bkg_mask + IR_UC_mask
     getgradmap = Get_gradmag_gray()
     IR_grad = getgradmap(real_IR)
@@ -384,11 +382,8 @@ def CondGradRepaLoss(fake_img, fake_mask, real_IR, gpu_ids=[]):
 
     if IR_grad_bkg_sum > 0:
         # bkg_EC_loss = torch.sum(F.relu(IR_grad_bkg.detach() - vis_grad_bkg)) / IR_grad_bkg_sum.detach()
-
         IR_grad_bkg_mean = IR_grad_bkg_sum / torch.sum(IR_bkg_fuse_mask)
-        IR_grad_bkg_high_mask = torch.zeros_like(IR_grad_bkg)
-        IR_grad_bkg_high_mask = torch.where(IR_grad_bkg > IR_grad_bkg_mean, torch.ones_like(IR_grad_bkg),
-                                            torch.zeros_like(IR_grad_bkg))
+        IR_grad_bkg_high_mask = torch.where(IR_grad_bkg > IR_grad_bkg_mean, 1., 0.)
         IR_grad_bkg_high = IR_grad_bkg_high_mask.mul(IR_grad_bkg)
         vis_grad_bkg_high = IR_grad_bkg_high_mask.mul(vis_grad_bkg)
         IR_grad_bkg_high_sum = torch.sum(IR_grad_bkg_high)
@@ -740,71 +735,81 @@ def HistogramLoss(fake_im, real_color, GT_seg):
 
 
 def ColorLoss(image_fake, image_target, GT_seg, chroma=False):
-    im_fake = ImageTensor(image_fake*0.5 + 0.5).LAB()
-    im_target = ImageTensor(image_target*0.5 + 0.5).LAB()
-    color_fake = im_fake[0, 1:]
-    color_target = im_target[0, 1:]
-    colorAngle_fake = torch.arctan(color_fake[1]/color_fake[0])
-    colorAngle_real = torch.arctan(color_target[1]/color_target[0])
-    Chroma_fake = torch.sqrt(color_fake[1] ** 2 + color_fake[0] ** 2)
-    Chroma_real = torch.sqrt(color_target[1] ** 2 + color_target[0] ** 2)
-    if chroma:
-        chroma_loss = torch.sqrt(torch.sum((Chroma_fake - Chroma_real) ** 2) + 1e-6) / color_fake.shape[-1]**2
-    else:
-        chroma_loss = 0
-    loss_color = torch.sqrt(torch.sum(torch.cos(colorAngle_fake - colorAngle_real) ** 2) + 1e-6) / color_fake.shape[-1]**2
-    loss_color = torch.log(chroma_loss + loss_color)
+    # im_fake = ImageTensor(image_fake*0.5 + 0.5).LAB()
+    # im_target = ImageTensor(image_target*0.5 + 0.5).LAB()
+    # color_fake = im_fake[0, 1:]
+    # color_target = im_target[0, 1:]
+    # colorAngle_fake = torch.arctan(color_fake[1]/(color_fake[0] + 1e-6))
+    # colorAngle_real = torch.arctan(color_target[1]/(color_target[0] + 1e-6))
+    # Chroma_fake = torch.sqrt(color_fake[1] ** 2 + color_fake[0] ** 2)
+    # Chroma_real = torch.sqrt(color_target[1] ** 2 + color_target[0] ** 2)
+    # if chroma:
+    #     chroma_loss = torch.sqrt(torch.sum((Chroma_fake - Chroma_real) ** 2) + 1e-6) / color_fake.shape[-1]**2
+    # else:
+    #     chroma_loss = 0
+    # loss_color = torch.sqrt(torch.sum(torch.cos(colorAngle_fake - colorAngle_real) ** 2) + 1e-6) / color_fake.shape[-1]**2
+    # loss_color = torch.log(chroma_loss + loss_color)
 
+    im_fake = ImageTensor(image_fake*0.5 + 0.5)
+    im_target = ImageTensor(image_target*0.5 + 0.5)
+    color_loss = lambda x, y, m: (x.color_distance(y)*m).mean()
     if GT_seg is not None:
-        ssim = SSIM_Loss(win_size=11, data_range=1.0, size_average=True, channel=1)
-        i_fake = im_fake[0, 0]
-        i_target = im_target[0, 0]
+        # ssim = SSIM_Loss(win_size=11, data_range=1.0, size_average=False, channel=3)
         losses = [0.]
-        intensity_loss = lambda x, y, m: torch.sqrt((x*m - y*m)**2 + 1e-6) + ssim(x[None]*m[None], y[None]*m[None])
         tot_mask = 0
         # Cars color
         mask = torch.where(GT_seg == 13, 1., 0.)
         sum_mask = torch.sum(mask)
         tot_mask += sum_mask
         if sum_mask > 0:
-            loss = intensity_loss(i_fake, i_target, mask)
-            losses.append((loss - loss.min()).sum()/sum_mask)
+            loss = color_loss(im_fake, im_target, mask)
+            losses.append(loss)
         # Trucks color
         mask = torch.where(GT_seg == 14, 1., 0.)
         sum_mask = torch.sum(mask)
         tot_mask += sum_mask
         if sum_mask > 0:
-            loss = intensity_loss(i_fake, i_target, mask)
-            losses.append((loss - loss.min()).sum()/sum_mask)
+            loss = color_loss(im_fake, im_target, mask)
+            losses.append(loss)
         # Buildings color
         mask = torch.where(GT_seg == 2, 1., 0.)
         sum_mask = torch.sum(mask)
         tot_mask += sum_mask
         if sum_mask > 0:
-            loss = intensity_loss(i_fake, i_target, mask)
-            losses.append((loss - loss.min()).sum()/sum_mask)
+            loss = color_loss(im_fake, im_target, mask)
+            losses.append(loss)
         # Motorcycle color
         mask = torch.where(GT_seg == 17, 1., 0.)
         sum_mask = torch.sum(mask)
         tot_mask += sum_mask
         if sum_mask > 0:
-            loss = intensity_loss(i_fake, i_target, mask)
-            losses.append((loss - loss.min()).sum()/sum_mask)
+            loss = color_loss(im_fake, im_target, mask)
+            losses.append(loss)
         # Traffic sign color
         mask = torch.where(GT_seg == 7, 1., 0.)
         sum_mask = torch.sum(mask)
         tot_mask += sum_mask
         if sum_mask > 0:
-            loss = intensity_loss(i_fake, i_target, mask)
-            losses.append((loss - loss.min()).sum()/sum_mask*5)
+            loss = color_loss(im_fake, im_target, mask)
+            losses.append(loss)
         # Road color
         mask = torch.where(GT_seg <= 2, 1., 0.)
         sum_mask = torch.sum(mask)
         tot_mask += sum_mask
         if sum_mask > 0:
-            loss = intensity_loss(i_fake, i_target, mask)
+            loss = color_loss(im_fake, im_target, mask)
             losses.append((loss - loss.min()).sum()/sum_mask)
-        loss_color += sum(losses) * tot_mask / color_fake.shape[-1]**2
+        loss_color = sum(losses) * tot_mask / (im_fake.shape[-2]*im_fake.shape[-1])
+    else:
+        chunk = 8
+        im_fake_split = split_im(im_fake, chunk)
+        im_target_split = split_im(im_target, chunk)
+        loss_color = 0
+        for i in range(chunk**2):
+            loss_color += color_loss(ImageTensor(im_fake_split[:, :, i]),
+                                     ImageTensor(im_target_split[:, :, i]),
+                                     torch.ones_like(im_fake_split[:, :, i]))
+        loss_color /= chunk**2 * (im_fake.shape[-2]*im_fake.shape[-1])
     return loss_color
 
 

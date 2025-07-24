@@ -16,16 +16,26 @@ import torch
 from torchvision.transforms.v2.functional import gaussian_blur
 
 from ImagesCameras import ImageTensor as im
+from ImagesCameras.Image.colorspace import color_distance
 from models.utils_fct import detect_blob
 
 # from ImagesCameras.Metrics import SSIM
 # from ImagesCameras.tools.misc import time_fct
 
 
-# color_path = '/home/godeta/PycharmProjects/TIR2VIS/datasets/FLIR/FLIR_datasets/trainC/'
-# # path = '/home/godeta/PycharmProjects/TIR2VIS/datasets/FLIR/FLIR_datasets/trainC/FLIR_00137.png'
-# list_im_color = [color_path + p for p in sorted(os.listdir(color_path))]
-# for path in list_im_color:
+color_path = '/home/godeta/PycharmProjects/TIR2VIS/datasets/FLIR/FLIR_datasets/trainC/'
+path = '/home/godeta/PycharmProjects/TIR2VIS/datasets/FLIR/FLIR_datasets/trainC/FLIR_00137.png'
+
+
+list_im_color = [color_path + p for p in sorted(os.listdir(color_path))]
+for path in list_im_color:
+    i1 = im(path)
+    i1_d = i1.pyrDown()
+    i2 = i1**3
+    i2_d = (i1_d**5).pyrUp()
+    i2 = (i1 + (i2 - i2_d).clamp(0, 1)).normalize()
+    i2.hstack(i1).show()
+    # i2.normalize().show()
 #     col = im(path)
 #     gray = col.GRAY()
 #     col_max, clr = col.max(dim=1, keepdim=True)
@@ -35,9 +45,6 @@ from models.utils_fct import detect_blob
 #     mask = gaussian_blur(mask*1., [13, 13], [5, 5])
 #     filt_col = col * mask
 #     col.hstack(filt_col).show()
-
-for i in range(100):
-    print(i)
 
 # ir_path = '/home/godeta/PycharmProjects/TIR2VIS/datasets/FLIR/FLIR_datasets/trainB/'
 #
