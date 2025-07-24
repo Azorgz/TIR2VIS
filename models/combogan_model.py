@@ -2132,14 +2132,14 @@ class GanColorCombo(ComboGANModel):
         # Optional structure constraint loss on generate fake images, added by lfy
         ####The last three terms of loss_sga[self.DA] denote the monochromatic regularization term, the temperature
         # regularization term, and the bias correction loss, respectively.
-        self.loss_sga[self.DA] = self.lambda_sga * self.criterionSGAVis(self.EdgeMap_A, self.get_gradmag(self.fake_B),
-                                                                        self.patch_num_sqrt, self.grad_th_vis) + \
-                                 torch.max(torch.max(self.fake_B, 1)[0] - torch.min(self.fake_B, 1)[0]) + \
-                                 self.lambda_ssim * self.criterionIRClsDis(self.SegMask_A.detach(), self.fake_B,
-                                                                           self.real_A.detach(), self.gpu_ids[0]) + \
-                                 self.lambda_ssim * self.criterionBC(self.SegMask_A.detach(), self.fake_B,
+        self.loss_sga[self.DA] = (self.lambda_sga * self.criterionSGAVis(self.EdgeMap_A, self.get_gradmag(self.fake_B),
+                                                                        self.patch_num_sqrt, self.grad_th_vis) +
+                                  self.lambda_ssim * self.criterionIRClsDis(self.SegMask_A.detach(), self.fake_B,
+                                                                           self.real_A.detach(), self.gpu_ids[0]) +
+                                  self.lambda_ssim * self.criterionBC(self.SegMask_A.detach(), self.fake_B,
                                                                      self.real_A.detach(), self.rec_A, self.EdgeMap_A,
-                                                                     self.gpu_ids[0])
+                                                                     self.gpu_ids[0]))
+    # torch.max(torch.max(self.fake_B, 1)[0] - torch.min(self.fake_B, 1)[0]) + \
         self.loss_sga[self.DB] = self.lambda_sga * self.criterionSGAIR(self.EdgeMap_B, self.get_gradmag(self.fake_A),
                                                                        self.patch_num_sqrt, self.grad_th_IR)
 
@@ -2160,18 +2160,18 @@ class GanColorCombo(ComboGANModel):
             loss_fwd_A, loss_fwd_B = 0, 0
 
         # combined loss
-        loss_G = (self.loss_G[self.DA] + self.loss_G[self.DB] + \
-                  (self.loss_cycle[self.DA] + self.loss_cycle[self.DB]) + \
-                  (loss_idt_A + loss_idt_B) * self.lambda_idt + \
-                  (loss_enc_A + loss_enc_B) * self.lambda_enc + \
-                  (loss_fwd_A + loss_fwd_B) * self.lambda_fwd + \
-                  (self.loss_S_enc[self.DA] + self.loss_S_enc[self.DB]) + \
-                  (self.loss_tv[self.DA] + self.loss_tv[self.DB]) + \
-                  (self.loss_S_rec[self.DA] + self.loss_S_rec[self.DB]) + \
-                  (self.loss_sga[self.DA] + self.loss_sga[self.DB]) + \
-                  (self.loss_DS[self.DA] + self.loss_DS[self.DB]) + \
-                  (self.loss_SR[self.DA] + self.loss_SR[self.DB]) + \
-                  (self.loss_AC[self.DA] + self.loss_AC[self.DB]) + \
+        loss_G = (self.loss_G[self.DA] + self.loss_G[self.DB] +
+                  (self.loss_cycle[self.DA] + self.loss_cycle[self.DB]) +
+                  (loss_idt_A + loss_idt_B) * self.lambda_idt +
+                  (loss_enc_A + loss_enc_B) * self.lambda_enc +
+                  (loss_fwd_A + loss_fwd_B) * self.lambda_fwd +
+                  (self.loss_S_enc[self.DA] + self.loss_S_enc[self.DB]) +
+                  (self.loss_tv[self.DA] + self.loss_tv[self.DB]) +
+                  (self.loss_S_rec[self.DA] + self.loss_S_rec[self.DB]) +
+                  (self.loss_sga[self.DA] + self.loss_sga[self.DB]) +
+                  (self.loss_DS[self.DA] + self.loss_DS[self.DB]) +
+                  (self.loss_SR[self.DA] + self.loss_SR[self.DB]) +
+                  (self.loss_AC[self.DA] + self.loss_AC[self.DB]) +
                   loss_TLight_appe + self.loss_color)  ######Edit by lfy
 
         loss_G.backward()
@@ -2263,12 +2263,16 @@ class GanColorCombo(ComboGANModel):
         self.real_A.resize_(input_A.size()).copy_(input_A)
         if self.isTrain:
             if self.opt.simple_train:
-                corr = {1: 'B', 2: 'C'}
+                # corr = {1: 'B', 2: 'C'}
 
-                i = (step // self.opt.simple_train_channel) % 2 + 1 if self.opt.simple_train_channel>0 else 1-self.opt.simple_train_channel
-                input_B = input[corr[i]]
-                self.DB = i
-                self.simple_train_channel = 0, i
+                # i = (step // self.opt.simple_train_channel) % 2 + 1 if self.opt.simple_train_channel>0 else 1-self.opt.simple_train_channel
+                # input_B = input[corr[i]]
+                # self.DB = i
+                # self.simple_train_channel = 0, i
+                # self.set_partial_train()
+                input_B = input['Fus']
+                self.DB = 1
+                self.simple_train_channel = 0, 1
                 self.set_partial_train()
             else:
                 input_B = input['B']
@@ -2293,6 +2297,7 @@ class GanColorCombo(ComboGANModel):
             mask_L = (gray >= (1 - self.opt.vis_night_hl_th) * 3) * (gray <= self.opt.vis_night_hl_th)
             mask_C = col.max(dim=1, keepdim=True)[0] > gray * math.sqrt(2)
             self.mask = gaussian_blur(((mask_L + mask_C) > 0) * 1., [13, 13], [5, 5]).detach()
+
     def optimize_parameters(self, epoch):
         self.alternate = (self.alternate + 1) % 2
         self.epoch = epoch
