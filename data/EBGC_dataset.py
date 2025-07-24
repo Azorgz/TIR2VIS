@@ -58,11 +58,11 @@ class EBGCDataset(BaseDataset):
         else:
             crop_xxyy = [0, 0, 0, 0]
         path = self.paths[dom][idx]
-        img = ImageTensor(path).crop(crop_xxyy, mode='lrtb').resize((400, 500)).crop((200, 250, 288, 360), mode='uvhw', center=True).RGB()
+        img = ImageTensor(path).crop(crop_xxyy, mode='lrtb').resize((400, 500)).crop((200, 250, 288, 360), mode='uvhw', center=True).RGB()**2
         img_name = path.split('/')[-1]
 
         if sup_dom is not None:
-            img_sup = ImageTensor(self.paths[sup_dom][idx]).RGB().crop(crop_xxyy, mode='lrtb').resize((400, 500)).crop((200, 250, 288, 360), mode='uvhw', center=True)
+            img_sup = ImageTensor(self.paths[sup_dom][idx]).RGB().crop(crop_xxyy, mode='lrtb').resize((400, 500)).crop((200, 250, 288, 360), mode='uvhw', center=True)**2
         if dom == 0:
             edge_map = ImageTensor(self.Vis_edge_paths + img_name).GRAY().crop(crop_xxyy, mode='lrtb').resize((400, 500)).crop((200, 250, 288, 360), mode='uvhw', center=True)
             seg_mask = (ImageTensor(self.Vis_mask_paths + img_name.replace('.jpg', '.png')).crop(crop_xxyy, mode='lrtb').match_shape(img, mode='nearest') * 255).to(torch.uint8)
