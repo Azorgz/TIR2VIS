@@ -300,7 +300,7 @@ def FakeIRPersonLossv2(Seg_mask, fake_IR, real_vis, gpu_ids=[]):
         person_region_padding1 = person_region + non_person_mask  ####To get person region min value
         road_mean_value = (fake_mean_fea[0, :]).detach()
         person_min_value = torch.min(person_region_padding1)
-        person_dis_loss = F.relu((road_mean_value - person_min_value).mean()) / (road_mean_value + 1e-4)
+        person_dis_loss = F.relu(road_mean_value - person_min_value) / (road_mean_value + 1e-4)
     else:
         person_dis_loss = 0.0
 
