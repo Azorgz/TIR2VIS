@@ -42,11 +42,11 @@ class TrainOptions(BaseOptions):
 
         self.parser.add_argument('--continue_train', type=bool, default=True,
                                  help='continue training: load the latest model')
-        self.parser.add_argument('--simple_train', type=bool, default=False,
+        self.parser.add_argument('--simple_train', type=bool, default=True,
                                  help='continue training: load the latest model')
         self.parser.add_argument('--simple_train_channel', type=int, default=0,
                                  help='alternate between 0/1 and 0/2 mod every n steps')
-        self.parser.add_argument('--which_epoch', type=int, default=12,
+        self.parser.add_argument('--which_epoch', type=int, default=2,
                                  help='which epoch to load if continuing training')
         self.parser.add_argument('--epoch_load', type=validate_epoch_load, default='latest', #validate_epoch_load({'G': 'latest', 'G2': -1,  'S': 'latest', 'D': 'latest'}), #'latest', #validate_epoch_load(
             # {'G0': 'latest', 'G1': -1, 'G2': 'latest', 'G3': 'latest', 'G4': -1, 'G5': 'latest', 'G6': 'latest',
