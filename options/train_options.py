@@ -52,7 +52,7 @@ class TrainOptions(BaseOptions):
             # {'G0': 'latest', 'G1': -1, 'G2': 'latest', 'G3': 'latest', 'G4': -1, 'G5': 'latest', 'G6': 'latest',
             #  'D0': 'latest', 'D2': 'latest', 'S': 'latest'}),
                                  help='which epoch to load if continuing training')
-        self.parser.add_argument("--partial_train", type=dict | None, default=None, #{'G': [0, 2, 3, 5, 6], 'D': [2], 'S': [2]},
+        self.parser.add_argument("--partial_train", type=Union[dict, None], default=None, #{'G': [0, 2, 3, 5, 6], 'D': [2], 'S': [2]},
                                  help="Which domains of G - D - S are trained in ["
                                       "0 - 3: visible Encoder - Decoder"
                                       "1 - 4: IR Encoder - Decoder"
