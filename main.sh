@@ -1,6 +1,6 @@
 #!/bin/bash
 #OAR -n tir2vis
-#OAR -l /nodes=1/gpu=1,walltime=12:00:00
+#OAR -l /nodes=1/gpu=1,walltime=24:00:00
 #OAR -p gpumodel='V100'
 #OAR --stdout logs/print.out
 #OAR --stderr logs/error.err
