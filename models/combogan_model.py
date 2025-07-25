@@ -1411,8 +1411,8 @@ class GanColorCombo(ComboGANModel):
         # self.fake_B_C = self.netG.decode(encoded_C, self.DB)
         # D_C(G_C(A))
         self.fake_C_A = self.netG.decode(encoded_A, self.DC)
-        self.loss_G[2] += self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_C_A, self.DA), False) \
-            if self.cond('EC', 'DA') else self.null
+        self.loss_G[2] += self.criterionGAN(self.pred_real_C, self.netD.forward(self.fake_C_A, self.DC), False) \
+            if self.cond('EA', 'DC') else self.null
 
         # D_C(G_C(B))
         # self.fake_C_B = self.netG.decode(encoded_B, self.DC)
