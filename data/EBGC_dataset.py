@@ -79,7 +79,7 @@ class EBGCDataset(BaseDataset):
         transform_list_torch = [ImageTensor.to_tensor, transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
         transform = transforms.Compose(transform_list_torch)
         if sup_dom is not None:
-            img_fus = transform(self.fus_input(img_sup, img))
+            img_fus = transform(self.fus_input(img_sup, img)**1.2)
             # img_fus = transform(self.fus_input(img_sup, img))
             img_res = transform(img)
             img_sup_res = transform(img_sup)

@@ -12,6 +12,8 @@ from torchvision import models
 
 from ImagesCameras import ImageTensor
 from models.utils_fct import get_norm_layer, weights_init, power_iteration
+from thirdParty.CrossModalFlow.flow_utils import backwarp_tensor
+from thirdParty.CrossModalFlow.run_model import run_tensor
 from util.util import gkern_2d
 
 
@@ -869,18 +871,24 @@ class ResnetBlock2(nn.Module):
         self.final_block = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=3, padding=1, bias=use_bias),
                                          norm_layer(dim),
                                          nn.Tanh())
+        self.flow_estimator = lambda x, y: run_tensor(x, y)
+        self.wrapper = lambda x, f: backwarp_tensor(x, f)
 
     def forward(self, inp, *args):
         if args:
-            mask, image_ir_, image_rgb = args
+            mask, image_ir, image_rgb = args
+            flow = self.flow_estimator(image_ir, image_rgb)
         else:
-            mask, image_ir_, image_rgb = None, None, None
+            mask, image_ir, image_rgb = None, None, None
+            flow = None
         if isinstance(inp, tuple):
             x, y = inp
-            x_ = x
+            if flow is not None:
+                flow = F.interpolate(flow, y.shape[-2:])
+            y = y if flow is None else self.wrapper(y, flow)
             y_ = self.conv_block(y)
             y_ = self.filter(y_, mask) if mask is not None else y_
-            xy_ = torch.cat([x_, y_], dim=1).permute(0, 2, 3, 1)
+            xy_ = torch.cat([x, y_], dim=1).permute(0, 2, 3, 1)
             res = self.fus_conv(xy_).permute(0, 3, 1, 2)
             return self.final_block(res)
         return inp + self.conv_block(inp)

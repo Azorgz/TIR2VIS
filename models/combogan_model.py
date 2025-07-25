@@ -20,7 +20,7 @@ from models.networks import Color_G_Plexer
 
 from .losses import GANLoss, StruGradAligLoss, CondGradRepaLoss, TrafLighLumiLoss, AdaColAttLoss, FakeIRPersonLossv2, \
     BiasCorrLoss, SemEdgeLoss, PixelConsistencyLoss, ComIRCGRLoss, TrafLighCorlLoss, SSIM_Loss, TVLoss, HistogramLoss, \
-    ColorLoss
+    ColorLoss, FakeVisNightLoss
 from .utils_fct import UpdateSegGT, UpdateFakeIRSegGT, OnlSemDisModule, UpdateIRSegGTv3, FakeIRFGMergeMaskv3, \
     FakeVisFGMergeMask, IRComPreProcessv6, UpdateFakeVISSegGT, detect_blob
 
@@ -55,6 +55,7 @@ class ComboGANModel(BaseModel):
         self.fake_B_C = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
 
         self.rec_A = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
+        self.rec_A_BC = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
         self.rec_B_A_BC = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
         self.rec_C_A_BC = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
         self.rec_C_B = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
@@ -111,6 +112,7 @@ class ComboGANModel(BaseModel):
             self.criterionTLL = lambda y, t, r, v: TrafLighLumiLoss(y, t, r, v)
             self.criterionACA = lambda y, t, r, v, f, m, l: AdaColAttLoss(y, t, r, v, f, m, l)
             self.criterionIRClsDis = lambda y, t, r, v: FakeIRPersonLossv2(y, t, r, v)
+            self.criterionVISClsDis = lambda y, t, r, v: FakeVisNightLoss(y, t, r, v)
             self.criterionBC = lambda y, t, r, v, f, m: BiasCorrLoss(y, t, r, v, f, m)
             self.criterionSemEdge = lambda y, t, r, v: SemEdgeLoss(y, t, r, v)
             self.criterionPixCon = lambda y, t, r, v: PixelConsistencyLoss(y, t, r, v)
@@ -1393,19 +1395,19 @@ class GanColorCombo(ComboGANModel):
         self.loss_color = self.null
         # D_A(G_A(B))
         self.fake_A = self.netG.decode(encoded_B, self.DA)
-        self.loss_G[1] = self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A, self.DA), False) \
+        self.loss_G[1] += self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A, self.DA), False) \
             if self.cond('DA', 'EB') else self.null
         # D_A(G_A(C))
         self.fake_A_C = self.netG.decode(encoded_C, self.DA)
-        self.loss_G[2] = self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A_C, self.DA), False) \
+        self.loss_G[2] += self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A_C, self.DA), False) \
             if self.cond('EC', 'DA') else self.null
         # D_A(G_A(Fus))
         self.fake_A_BC = self.netG.decode(encoded_BC, self.DA)
-        self.loss_G[2] = self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A_BC, self.DA), False) \
+        self.loss_G[2] += self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A_BC, self.DA), False) \
                 if self.cond('EC', 'Fus', 'DA', 'EB') else self.null
         # D_B(G_B(A))
         self.fake_B = self.netG.decode(encoded_A, self.DB)
-        self.loss_G[0] = self.criterionGAN(self.pred_real_B, self.netD.forward(self.fake_B, self.DB), False) \
+        self.loss_G[0] += self.criterionGAN(self.pred_real_B, self.netD.forward(self.fake_B, self.DB), False) \
                 if self.cond('EA', 'DB') else self.null
         # D_B(G_B(C))
         # self.fake_B_C = self.netG.decode(encoded_C, self.DB)
@@ -1417,7 +1419,7 @@ class GanColorCombo(ComboGANModel):
         # D_C(G_C(B))
         # self.fake_C_B = self.netG.decode(encoded_B, self.DC)
         # D_C(G_C(Fus))
-        self.fake_BC = self.netG.decode(encoded_BC, self.DC)
+        # self.fake_BC = self.netG.decode(encoded_BC, self.DC)
         # self.loss_G[3] += self.criterionGAN(self.pred_real_C, self.netD.forward(self.fake_BC, self.DC), False) \
         #         if self.cond('EB', 'EC', 'Fus', 'DC') else self.null
         # self.loss_G[0] += self.criterionGAN(self.pred_real_B, self.netD.forward(self.fake_BC, self.DB), False) \
@@ -1427,7 +1429,7 @@ class GanColorCombo(ComboGANModel):
         loss_likeness = self.null
         # loss_likeness += self.CriterionLikeness(self.fake_C_B * self.mask, self.real_C * self.mask) if self.cond('EB', 'DC') else self.null
         # loss_likeness += self.CriterionLikeness(self.fake_B_C, self.real_B) if self.cond('EC', 'DB') else self.null
-        loss_likeness += self.CriterionLikeness(self.fake_A_C, self.fake_A) if self.cond('EC', 'DA') else self.null
+        # loss_likeness += self.CriterionLikeness(self.fake_A_C, self.fake_A) if self.cond('EC', 'DA') else self.null
 
         # Cycle loss
         self.loss_cycle = {self.DA: 0, self.DB: 0, self.DC: 0, self.Fus: 0}
@@ -1472,10 +1474,14 @@ class GanColorCombo(ComboGANModel):
             #     if self.cond('EC', 'Fus') else self.null
 
         # Forward cycle loss for domain C
-        rec_encoded_A_C = self.netG.encode(self.fake_A_C, self.DA)
-        self.rec_C_A = self.netG.decode(rec_encoded_A_C, self.DC)
+        rec_encoded_C_A = self.netG.encode(self.fake_A_C, self.DA)
+        self.rec_C_A = self.netG.decode(rec_encoded_C_A, self.DC)
         self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A * self.mask, self.real_C * self.mask) \
             if self.cond('EC', 'DC', 'EA', 'DA') else self.null
+
+        rec_encoded_BC_A = self.netG.fusion_features(rec_encoded_A, rec_encoded_A_C, self.mask, self.fake_B, self.fake_C_A)
+        self.rec_A_BC = self.netG.decode(rec_encoded_BC_A, self.DA)
+        self.loss_cycle[self.DA] += loss_cycle(self.rec_A_BC, self.real_A * self.mask)
 
         # rec_encoded_B_C = self.netG.encode(self.fake_B_C, self.DB)
         # self.rec_C_B = self.netG.decode(rec_encoded_B_C, self.DC)
@@ -1501,8 +1507,8 @@ class GanColorCombo(ComboGANModel):
         if self.cond('Fus'):
             self.loss_tv[self.Fus] += self.lambda_tv * self.criterionTV(self.fake_A_BC) if self.cond('Fus', 'EC', 'EB',
                                                                                                      'DA') else self.null
-            self.loss_tv[self.Fus] += self.lambda_tv * self.criterionTV(self.fake_BC) if self.cond('Fus', 'EC', 'DC',
-                                                                                                   'EB') else self.null
+            # self.loss_tv[self.Fus] += self.lambda_tv * self.criterionTV(self.fake_BC) if self.cond('Fus', 'EC', 'DC',
+            #                                                                                        'EB') else self.null
 
         # Optional semantic consistency loss on encoded and rec_encoded features, added by lfy
         # "Random size for segmentation network training. Then, retain original image size."
@@ -1577,8 +1583,7 @@ class GanColorCombo(ComboGANModel):
                                                                                               self.SegMask_A_update.long(),
                                                                                               19, self.gpu_ids[0]))
                 if self.cond('B', dom='S'):
-                    self.loss_S_enc[self.DB] += self.lambda_sc * self.seg_loss(fake_B_pred_d,
-                                                                               self.SegMask_A_update.long())
+                    self.loss_S_enc[self.DB] += self.lambda_sc * self.seg_loss(fake_B_pred_d, self.SegMask_A_update.long())
                 if self.cond('C', dom='S'):
                     self.loss_S_enc[self.DC] += self.lambda_sc * self.seg_loss(fake_C_A_pred_d,
                                                                                self.SegMask_A_update.long())
@@ -1780,10 +1785,12 @@ class GanColorCombo(ComboGANModel):
         # regularization term, and the bias correction loss, respectively.
         self.loss_sga = {self.DA: 0.0, self.DB: 0.0, self.DC: 0.0}
         self.loss_sga[self.DA] += (self.lambda_sga * self.criterionSGAVis(self.EdgeMap_A, self.get_gradmag(self.fake_B),
-                                                                          self.patch_num_sqrt, self.grad_th_vis) + \
-                                   torch.max(torch.max(self.fake_B, 1)[0] - torch.min(self.fake_B, 1)[0]) + \
+                                                                          self.patch_num_sqrt, self.grad_th_vis) +
+                                   torch.max(torch.max(self.fake_B, 1)[0] - torch.min(self.fake_B, 1)[0]) +
                                    self.lambda_ssim * self.criterionIRClsDis(self.SegMask_A.detach(), self.fake_B,
-                                                                             self.real_A.detach(), self.gpu_ids[0]) + \
+                                                                             self.real_A.detach(), self.gpu_ids[0]) +
+                                   self.lambda_ssim * self.criterionVISClsDis(self.SegMask_A.detach(), self.fake_C_A,
+                                                                             self.real_A.detach(), self.gpu_ids[0]) +
                                    self.lambda_ssim * self.criterionBC(self.SegMask_A.detach(), self.fake_B,
                                                                        self.real_A.detach(), self.rec_A, self.EdgeMap_A,
                                                                        self.gpu_ids[0])) \
@@ -1827,18 +1834,18 @@ class GanColorCombo(ComboGANModel):
             loss_fwd = 0
 
         # combined loss
-        loss_G = (sum(self.loss_G) + \
-                  sum(self.loss_cycle.values()) + \
-                  loss_idt * self.lambda_idt + \
-                  loss_enc * self.lambda_enc + \
+        loss_G = (sum(self.loss_G) +
+                  sum(self.loss_cycle.values()) +
+                  loss_idt * self.lambda_idt +
+                  loss_enc * self.lambda_enc +
                   loss_fwd * self.lambda_fwd +
-                  sum(self.loss_S_enc.values()) + \
-                  sum(self.loss_tv) + \
-                  sum(self.loss_S_rec.values()) + \
-                  sum(self.loss_sga.values()) + \
-                  sum(self.loss_DS) + \
-                  sum(self.loss_SR) + \
-                  sum(self.loss_AC) + \
+                  sum(self.loss_S_enc.values()) +
+                  sum(self.loss_tv) +
+                  sum(self.loss_S_rec.values()) +
+                  sum(self.loss_sga.values()) +
+                  sum(self.loss_DS) +
+                  sum(self.loss_SR) +
+                  sum(self.loss_AC) +
                   loss_TLight_appe + loss_likeness + self.loss_color)  ######Edit by lfy
 
         loss_G.backward()

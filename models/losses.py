@@ -200,27 +200,17 @@ def AdaColAttLoss(real_vis_mask, real_vis_fea, fake_vis_mask, fake_vis_fea, clus
     real_vis_mask_resize = F.interpolate(real_vis_mask.expand(1, 1, 256, 256).float(), size=[h, w], mode='nearest')
     fake_vis_mask_resize = F.interpolate(fake_vis_mask.expand(1, 1, 256, 256).float(), size=[h, w], mode='nearest')
 
-    Light_mask_real = torch.where(real_vis_mask_resize == 6.0, torch.ones_like(real_vis_mask_resize),
-                                  torch.zeros_like(real_vis_mask_resize))
-    Sign_mask_real = torch.where(real_vis_mask_resize == 7.0, torch.ones_like(real_vis_mask_resize),
-                                 torch.zeros_like(real_vis_mask_resize))
-    Person_mask_real = torch.where(real_vis_mask_resize == 11.0, torch.ones_like(real_vis_mask_resize),
-                                   torch.zeros_like(real_vis_mask_resize))
-    Vehicle_mask_real = torch.where((real_vis_mask_resize > 12.0) & (real_vis_mask_resize < 17.0),
-                                    torch.ones_like(real_vis_mask_resize), torch.zeros_like(real_vis_mask_resize))
-    Motor_mask_real = torch.where(real_vis_mask_resize == 17.0, torch.ones_like(real_vis_mask_resize),
-                                  torch.zeros_like(real_vis_mask_resize))
+    Light_mask_real = torch.where(real_vis_mask_resize == 6.0, 0., 1.)
+    Sign_mask_real = torch.where(real_vis_mask_resize == 7.0, 0., 1.)
+    Person_mask_real = torch.where(real_vis_mask_resize == 11.0, 0., 1.)
+    Vehicle_mask_real = torch.where((real_vis_mask_resize > 12.0) & (real_vis_mask_resize < 17.0), 0., 1.)
+    Motor_mask_real = torch.where(real_vis_mask_resize == 17.0, 0., 1.)
 
-    Light_mask_fake = torch.where(fake_vis_mask_resize == 6.0, torch.ones_like(fake_vis_mask_resize),
-                                  torch.zeros_like(fake_vis_mask_resize))
-    Sign_mask_fake = torch.where(fake_vis_mask_resize == 7.0, torch.ones_like(fake_vis_mask_resize),
-                                 torch.zeros_like(fake_vis_mask_resize))
-    Person_mask_fake = torch.where(fake_vis_mask_resize == 11.0, torch.ones_like(fake_vis_mask_resize),
-                                   torch.zeros_like(fake_vis_mask_resize))
-    Vehicle_mask_fake = torch.where((fake_vis_mask_resize > 12.0) & (fake_vis_mask_resize < 17.0),
-                                    torch.ones_like(fake_vis_mask_resize), torch.zeros_like(fake_vis_mask_resize))
-    Motor_mask_fake = torch.where(fake_vis_mask_resize == 17.0, torch.ones_like(fake_vis_mask_resize),
-                                  torch.zeros_like(fake_vis_mask_resize))
+    Light_mask_fake = torch.where(fake_vis_mask_resize == 6.0, 0., 1.)
+    Sign_mask_fake = torch.where(fake_vis_mask_resize == 7.0, 0., 1.)
+    Person_mask_fake = torch.where(fake_vis_mask_resize == 11.0, 0., 1.)
+    Vehicle_mask_fake = torch.where((fake_vis_mask_resize > 12.0) & (fake_vis_mask_resize < 17.0), 0., 1.)
+    Motor_mask_fake = torch.where(fake_vis_mask_resize == 17.0, 0., 1.)
 
     if (torch.sum(Light_mask_real) > cluster_num) & (torch.sum(Light_mask_fake) > cluster_num):
         loss_light = ClsACALoss(real_vis_fea, Light_mask_real, fake_vis_fea, Light_mask_fake, c, cluster_num, max_iter,
@@ -295,7 +285,6 @@ def FakeIRPersonLossv2(Seg_mask, fake_IR, real_vis, gpu_ids=[]):
     "to be larger than the mean value of the road region. "
 
     # b, c, h, w = fake_IR.size()
-
     b, c, h, w = fake_IR.size()
     _, seg_h, seg_w = Seg_mask.size()
     GT_mask_resize = F.interpolate(Seg_mask.expand(1, 1, seg_h, seg_w).float(), size=[h, w], mode='nearest')
@@ -311,11 +300,63 @@ def FakeIRPersonLossv2(Seg_mask, fake_IR, real_vis, gpu_ids=[]):
         person_region_padding1 = person_region + non_person_mask  ####To get person region min value
         road_mean_value = (fake_mean_fea[0, :]).detach()
         person_min_value = torch.min(person_region_padding1)
-        person_dis_loss = F.relu(road_mean_value - person_min_value) / (road_mean_value + 1e-4)
+        person_dis_loss = F.relu((road_mean_value - person_min_value).mean()) / (road_mean_value + 1e-4)
     else:
         person_dis_loss = 0.0
 
     return person_dis_loss
+
+
+def FakeVisNightLoss(Seg_mask, fake_VIS_night, real_vis, gpu_ids=[]):
+    "Pedestrian regularization term: Encouraging the mean value of the pedestrian region in the fake IR image "
+    "to be close to the mean value of the pedestrian region in the real image. "
+
+    # b, c, h, w = fake_IR.size()
+
+    b, c, h, w = fake_VIS_night.size()
+    _, seg_h, seg_w = Seg_mask.size()
+    GT_mask_resize = F.interpolate(Seg_mask.expand(1, 1, seg_h, seg_w).float(), size=[h, w], mode='nearest')
+    person_mask = torch.where(GT_mask_resize == 11, 1., 0.)
+    real_img_norm = (real_vis + 1.0) * 0.5
+    fake_img_norm = (fake_VIS_night + 1.0) * 0.5
+    fake_VIS_gray = .299 * fake_img_norm[:, 0:1, :, :] + .587 * fake_img_norm[:, 1:2, :, :] + .114 * fake_img_norm[:,
+                                                                                                    2:3, :, :]
+    fake_mean_fea, fake_cls_tensor, _ = ClsMeanPixelValue(fake_VIS_gray, Seg_mask.detach(), 19, gpu_ids)
+    if fake_cls_tensor[11, :] > 0:
+        person_region_fake = (person_mask.expand_as(fake_img_norm)).mul(fake_img_norm)
+        person_region_true = (person_mask.expand_as(real_img_norm)).mul(real_img_norm)
+        person_dis_loss = torch.relu((torch.abs(person_region_true - person_region_fake) / (person_region_true + 1e-4)).mean())
+    else:
+        person_dis_loss = 0.0
+
+    car_mask = torch.where((16 > GT_mask_resize) * (GT_mask_resize > 12), 1., 0.)
+    if torch.sum(fake_cls_tensor[13:16, :]) > 0:
+        car_region_fake = (car_mask.expand_as(fake_img_norm)).mul(fake_img_norm)
+        car_region_true = (car_mask.expand_as(real_img_norm)).mul(real_img_norm)
+        car_dis_loss = torch.relu((torch.abs(car_region_true - car_region_fake) / (car_region_true + 1e-4)).mean())
+    else:
+        car_dis_loss = 0.0
+
+    road_mask = torch.where(2 > GT_mask_resize, 1., 0.)
+    if torch.sum(fake_cls_tensor[:2, :]) > 0:
+        road_region_fake = (road_mask.expand_as(fake_img_norm)).mul(fake_img_norm)
+        road_region_true = (road_mask.expand_as(real_img_norm)).mul(real_img_norm)
+        road_region_true_mean = road_region_true.mean()
+        road_region_true = torch.where(road_region_true > road_region_true_mean*1.1, road_region_true, 0)
+        road_region_fake = torch.where(road_region_true > road_region_true_mean*1.1, road_region_fake, 0)
+        road_paint_dis_loss = torch.relu((torch.abs(road_region_true - road_region_fake) / (road_region_true + 1e-4)).mean())
+    else:
+        road_paint_dis_loss = 0.0
+
+    sign_mask = torch.where(7 == GT_mask_resize, 1., 0.)
+    if torch.sum(fake_cls_tensor[7, :]) > 0:
+        sign_region_fake = (sign_mask.expand_as(fake_img_norm)).mul(fake_img_norm)
+        sign_region_true = (sign_mask.expand_as(real_img_norm)).mul(real_img_norm)
+        sign_dis_loss = torch.relu((torch.abs(sign_region_true*1.1 - sign_region_fake) / (sign_region_true*1.1 + 1e-4)).mean())
+    else:
+        sign_dis_loss = 0.0
+
+    return person_dis_loss + car_dis_loss + road_paint_dis_loss + sign_dis_loss
 
 
 def CarIntraClsVarLoss(input_IR, fake_vis, SegMask, num_class, gpu_ids=[]):
@@ -330,15 +371,14 @@ def CarIntraClsVarLoss(input_IR, fake_vis, SegMask, num_class, gpu_ids=[]):
     IR_gray = torch.squeeze(
         .299 * input_IR[:, 0:1, :, :] + .587 * input_IR[:, 1:2, :, :] + .114 * input_IR[:, 2:3, :, :])
 
-    mask_intensity_low = torch.where(IR_gray < 0.3, torch.ones_like(IR_gray), torch.zeros_like(IR_gray))
-    mask_intensity_high = torch.where(IR_gray > 0.6, torch.ones_like(IR_gray), torch.zeros_like(IR_gray))
+    mask_intensity_low = torch.where(IR_gray < 0.3, 1., 0.)
+    mask_intensity_high = torch.where(IR_gray > 0.6, 1., 0.)
     out_tensor = torch.zeros(num_class, 1).cuda(gpu_ids)
     out_cls_tensor = torch.zeros(num_class, 1).cuda(gpu_ids)
 
     if b == 1:
         for i in range(13, 16):
-            temp_tensor = torch.zeros_like(seg_mask)
-            temp_tensor = torch.where(seg_mask == i, torch.ones_like(temp_tensor), torch.zeros_like(temp_tensor))
+            temp_tensor = torch.where(seg_mask == i, 1., 0.)
             temp_tensor_low = temp_tensor.mul(mask_intensity_low)
             temp_tensor_high = temp_tensor.mul(mask_intensity_high)
             # temp_tensor = att_maps[0, i, :, :]

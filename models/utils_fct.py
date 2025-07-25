@@ -1,20 +1,16 @@
 import functools
 from typing import Literal
-
 import numpy as np
 import torch
 import torch.nn.functional as F
+from kmeans_pytorch import kmeans
 from kornia.filters import get_gaussian_kernel2d
-from skimage.exposure import exposure
 from torch import nn, Tensor, conv2d
 import skimage
 from skimage import measure
-from kmeans_pytorch import kmeans
 from torch.nn import init, Conv2d, Softmax2d
 from math import sqrt
-from skimage import data
 from skimage.feature import blob_dog, blob_log, blob_doh
-from skimage.color import rgb2gray
 import cv2 as cv
 
 from ImagesCameras import ImageTensor
@@ -639,12 +635,8 @@ def GetImgHieFea(input_rgb, input_gray, value_th_list, th_num, gpu_ids=[]):
     gray_img_squeeze = torch.squeeze(input_gray)
     GAP = nn.AdaptiveAvgPool2d(1)
     for i in range(th_num):
-        temp_mask1 = torch.zeros_like(gray_img_squeeze)
-        temp_mask1 = torch.where(gray_img_squeeze < value_th_list[i], torch.ones_like(gray_img_squeeze),
-                                 torch.zeros_like(gray_img_squeeze))
-        temp_mask2 = torch.zeros_like(gray_img_squeeze)
-        temp_mask2 = torch.where(gray_img_squeeze < value_th_list[i + 1], torch.ones_like(gray_img_squeeze),
-                                 torch.zeros_like(gray_img_squeeze))
+        temp_mask1 = torch.where(gray_img_squeeze < value_th_list[i], 1., 0.)
+        temp_mask2 = torch.where(gray_img_squeeze < value_th_list[i + 1], 1., 0.)
         th_mask = temp_mask2 - temp_mask1
         mask_pixels = torch.sum(th_mask)
         out_dist_pixels_tensor[i, :] = mask_pixels
