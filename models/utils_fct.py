@@ -538,7 +538,7 @@ def getLightDarkRegionMean(cls_idx, input_img, input_mask, ref_img, gpu_ids=[]):
         ###Compute channle mean.
         input_img_3dim = torch.squeeze(input_img)
         input_img_DR_Masked = input_img_3dim.mul(Light_Dark_Region_Mask)
-        input_img_DR_mean_3dim = torch.mean(input_img_DR_Masked, dim=0, keepdim=True)  #3*h*w
+        input_img_DR_mean_3dim = torch.mean(input_img_DR_Masked, dim=0, keepdim=True)  #1*h*w
         input_img_DR_submean = (input_img_DR_Masked - input_img_DR_mean_3dim) ** 2
         input_img_DR_var = torch.max(torch.sum(input_img_DR_submean, dim=0))
 
@@ -549,6 +549,36 @@ def getLightDarkRegionMean(cls_idx, input_img, input_mask, ref_img, gpu_ids=[]):
         # Light_region_ref_var = torch.zeros(1).cuda(gpu_ids)
 
     return Light_Dark_Region_Mean, light_region_area, Light_Bright_Region_Min, input_img_DR_var
+
+
+def getLightRegionColor(cls_idx, input_img, mask, gpu_ids=[]):
+    "Obtain the color value of the traffic light."
+    _, _, h, w = input_img.size()
+    light_mask_ori = torch.where(mask == cls_idx, 1., 0.).sum(dim=1, keepdim=True)
+    max_pool_k3 = nn.MaxPool2d(kernel_size=5, stride=1, padding=2)
+    Light_mask = torch.squeeze(-max_pool_k3(- light_mask_ori))
+    light_region_area = torch.sum(Light_mask)
+    coefflight_green = [-1.5, 0.5, 1]
+    coefflight_orange = [-0.4, 0.7, -0.3]
+    if light_region_area > 1:
+        Light_region = input_img.mul(Light_mask.detach())
+        Light_region_mean_channels = torch.mean(torch.mean(Light_region, dim=-1), dim=-1)
+        sum_channel = (Light_region_mean_channels[:, 0] * coefflight_green[0] +
+               Light_region_mean_channels[:, 1] * coefflight_green[1] +
+               Light_region_mean_channels[:, 2] * coefflight_green[2])
+        if sum_channel > 0:
+            color = Tensor([0., 1., 0.2]).to(input_img.device)
+        else:
+            Light_region_mean_channels = torch.mean(torch.mean(Light_region, dim=-1), dim=-1)
+            sum_channel = (Light_region_mean_channels[:, 0] * coefflight_orange[0] +
+                           Light_region_mean_channels[:, 1] * coefflight_orange[1] +
+                           Light_region_mean_channels[:, 2] * coefflight_orange[2])
+            if sum_channel > 0:
+                color = Tensor([1, 0.5, 0.]).to(input_img.device)
+            else:
+                color = Tensor([1, 0., 0.]).to(input_img.device)
+
+    return color
 
 
 def LightMaskDenoised(Seg_mask, real_vis, Avg_KernelSize, gpu_ids=[]):
@@ -600,7 +630,7 @@ def RefineLightMask(Seg_mask, real_vis, gpu_ids=[]):
     "Denoising of the traffic light mask region."
     Segmask_Light_DN_k5 = LightMaskDenoised(Seg_mask, real_vis, 5, gpu_ids)
     Segmask_Light_DN_k3 = LightMaskDenoised(Segmask_Light_DN_k5, real_vis, 3, gpu_ids)
-    return torch.where(Segmask_Light_DN_k3 == 6.0, torch.ones_like(Seg_mask), torch.zeros_like(Seg_mask))
+    return torch.where(Segmask_Light_DN_k3 == 6.0, 1., 0.)
 
 
 

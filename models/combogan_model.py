@@ -44,29 +44,30 @@ class ComboGANModel(BaseModel):
         self.real_C = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
         self.real_Fus = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
         self.mask = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
-
-        self.fake_A = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
-        self.fake_B = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
-        self.fake_BC = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
-        self.fake_A_BC = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
-        self.fake_C_A = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
-        self.fake_C_B = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
-        self.fake_A_C = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
-        self.fake_B_C = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
-
-        self.rec_A = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
-        self.rec_A_BC = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
-        self.rec_B_A_BC = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
-        self.rec_C_A_BC = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
-        self.rec_C_B = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
-        self.rec_C_A = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
-        self.rec_A_C = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
-        self.rec_B_C = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
-        self.rec_B_BC = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
-        self.rec_C_BC = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
-
         self.segMask_A = self.Tensor(opt.batchSize, opt.num_class, opt.fineSize, opt.fineSize).long()
         self.segMask_B = self.Tensor(opt.batchSize, opt.num_class, opt.fineSize, opt.fineSize).long()
+
+
+        self.fake_A = None
+        self.fake_B = None
+        self.fake_BC = None
+        self.fake_A_BC = None
+        self.fake_C_A = None
+        self.fake_C_B = None
+        self.fake_A_C = None
+        self.fake_B_C = None
+
+        self.rec_real_C = None
+        self.rec_A = None
+        self.rec_A_BC = None
+        self.rec_B_A_BC = None
+        self.rec_C_A_BC = None
+        self.rec_C_B = None
+        self.rec_C_A = None
+        self.rec_A_C = None
+        self.rec_B_C = None
+        self.rec_B_BC = None
+        self.rec_C_BC = None
 
         # load/define networks
         self.netG = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.net_Gen_type,
@@ -103,9 +104,9 @@ class ComboGANModel(BaseModel):
             self.CriterionLikeness = self.L1
             self.criterionIdt = lambda y, t: self.L1(self.downsample(y), self.downsample(t))
             self.criterionLatent = lambda y, t: self.L1(y, t.detach())
-            self.criterionGAN = lambda r, f, v: (GANLoss(r[0], f[0], v) + \
-                                                 GANLoss(r[1], f[1], v) + \
-                                                 GANLoss(r[2], f[2], v)) / 3
+            self.criterionGAN = lambda r, f, v, m=None: (GANLoss(r[0], f[0], v, m) +
+                                                 GANLoss(r[1], f[1], v, m) +
+                                                 GANLoss(r[2], f[2], v, m)) / 3
             self.criterionSGAIR = lambda y, t, r, v: StruGradAligLoss(y, t, r, v)
             self.criterionSGAVis = lambda y, t, r, v: StruGradAligLoss(y, t, r, v)
             self.criterionCGR = lambda y, t, r, v: CondGradRepaLoss(y, t, r, v)
@@ -845,8 +846,10 @@ class GanColorCombo(ComboGANModel):
         self.netG = Color_G_Plexer(self.netG)
         self.netG.to(self.gpu_ids[0])
         self.loss_color = torch.Tensor([0.]).to('cuda')
+        self.loss_saturation = torch.Tensor([0.]).to('cuda')
         self.lambda_color = torch.Tensor([opt.lambda_color]).to('cuda')
         self.criterionColor = ColorLoss
+        self.criterionSaturation = lambda x: torch.mean(((x*0.5 + 0.5).mean(dim=1) > 0.9)*1.)
         self.simple_train_channel = 0, 1
         self.set_partial_train()
         self.rec_A, self.rec_B, self.rec_C, self.rec_BC = None, None, None, None
@@ -1372,7 +1375,7 @@ class GanColorCombo(ComboGANModel):
         encoded_A = self.netG.encode(self.real_A, self.DA)
         encoded_B = self.netG.encode(self.real_B, self.DB)
         encoded_C = self.netG.encode(self.real_C, self.DC)
-        encoded_BC = self.netG.fusion_features(encoded_B, encoded_C, self.mask, self.real_B, self.real_C)
+        encoded_BC, self.rec_real_C = self.netG.fusion_features(encoded_B, encoded_C, self.mask, self.real_B, self.real_C)
 
         encoded_A = encoded_A.detach() if not self.cond('EA') else encoded_A
         encoded_B = encoded_B.detach() if not self.cond('EB') else encoded_B
@@ -1382,24 +1385,24 @@ class GanColorCombo(ComboGANModel):
         # Optional identity "autoencode" loss ###############################
         if self.lambda_idt > 0:
             # Same encoder and decoder should recreate image
-            loss_idt_A = self.criterionIdt(self.netG.decode(encoded_A, self.DA), self.real_A) if self.cond('EA', 'DA') else self.null
+            A = self.netG.decode(encoded_A, self.DA)
+            loss_idt_A = self.criterionIdt(A, self.real_A) if self.cond('EA', 'DA') else self.null
             B = self.netG.decode(encoded_B, self.DB)
             loss_idt_B = self.criterionIdt(B, self.real_B) if self.cond('EB', 'DB') else self.null
             C = self.netG.decode(encoded_C, self.DC)
-            loss_idt_C = self.criterionIdt(C, self.real_C) if self.cond('EC', 'DC') else self.null
+            loss_idt_C = self.criterionColor(C, self.real_C, None) if self.cond('EC', 'DC') else self.null
             loss_idt = loss_idt_A + loss_idt_B + loss_idt_C
         else:
             loss_idt = self.null
         # GAN loss ##############################################################
         self.loss_G = [0, 0, 0]
-        self.loss_color = self.null
         # D_A(G_A(B))
         self.fake_A = self.netG.decode(encoded_B, self.DA)
         self.loss_G[1] += self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A, self.DA), False) \
             if self.cond('DA', 'EB') else self.null
         # D_A(G_A(C))
         self.fake_A_C = self.netG.decode(encoded_C, self.DA)
-        self.loss_G[2] += self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A_C, self.DA), False) \
+        self.loss_G[2] += self.criterionGAN(self.pred_real_A, self.netD.forward(self.fake_A_C, self.DA), False, self.mask) \
             if self.cond('EC', 'DA') else self.null
         # D_A(G_A(Fus))
         self.fake_A_BC = self.netG.decode(encoded_BC, self.DA)
@@ -1429,7 +1432,7 @@ class GanColorCombo(ComboGANModel):
         loss_likeness = self.null
         # loss_likeness += self.CriterionLikeness(self.fake_C_B * self.mask, self.real_C * self.mask) if self.cond('EB', 'DC') else self.null
         # loss_likeness += self.CriterionLikeness(self.fake_B_C, self.real_B) if self.cond('EC', 'DB') else self.null
-        # loss_likeness += self.CriterionLikeness(self.fake_A_C, self.fake_A) if self.cond('EC', 'DA') else self.null
+        # loss_likeness += self.CriterionLikeness(self.fake_A_BC, self.fake_A)
 
         # Cycle loss
         self.loss_cycle = {self.DA: 0, self.DB: 0, self.DC: 0, self.Fus: 0}
@@ -1461,10 +1464,10 @@ class GanColorCombo(ComboGANModel):
             rec_encoded_BC = self.netG.encode(self.fake_A_BC, self.DA)
             self.rec_C_A_BC = self.netG.decode(rec_encoded_BC, self.DC)
             self.rec_B_A_BC = self.netG.decode(rec_encoded_BC, self.DB)
-            self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A_BC * self.mask, self.real_C * self.mask) \
-                if self.cond('DC', 'EC', 'Fus', 'EA', 'DA') else self.null
+            self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A_BC * self.mask, self.rec_real_C * self.mask) \
+                if self.cond('DC', 'EC', 'EA', 'DA') else self.null
             self.loss_cycle[self.DC] += loss_cycle(self.rec_B_A_BC, self.real_B) \
-                if self.cond('EC', 'Fus', 'DB', 'EA', 'DA') else self.null
+                if self.cond('EC', 'DB', 'EA', 'DA') else self.null
             # rec_encoded_BC = self.netG.encode(self.fake_BC, self.DC)
             # self.rec_B_BC = self.netG.decode(rec_encoded_BC, self.DB)
             # self.rec_C_BC = self.netG.decode(rec_encoded_BC, self.DC)
@@ -1476,32 +1479,26 @@ class GanColorCombo(ComboGANModel):
         # Forward cycle loss for domain C
         rec_encoded_C_A = self.netG.encode(self.fake_A_C, self.DA)
         self.rec_C_A = self.netG.decode(rec_encoded_C_A, self.DC)
-        self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A * self.mask, self.real_C * self.mask) \
+        self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A, self.real_C) \
             if self.cond('EC', 'DC', 'EA', 'DA') else self.null
 
-        rec_encoded_BC_A = self.netG.fusion_features(rec_encoded_A, rec_encoded_A_C, self.mask, self.fake_B, self.fake_C_A)
+        rec_encoded_BC_A, _ = self.netG.fusion_features(rec_encoded_A, rec_encoded_A_C, None, self.fake_B, self.fake_C_A)
         self.rec_A_BC = self.netG.decode(rec_encoded_BC_A, self.DA)
-        self.loss_cycle[self.DA] += loss_cycle(self.rec_A_BC, self.real_A * self.mask)
+        self.loss_cycle[self.DA] += loss_cycle(self.rec_A_BC, self.real_A)
 
         # rec_encoded_B_C = self.netG.encode(self.fake_B_C, self.DB)
         # self.rec_C_B = self.netG.decode(rec_encoded_B_C, self.DC)
         # self.loss_cycle[self.DC] += loss_cycle(self.rec_C_B * self.mask, self.real_C * self.mask) \
         #     if self.cond('EC', 'DC', 'EB', 'DB') else self.null
 
-        # loss_color
-        self.loss_color = self.null
-        if self.epoch > 20:
-            self.loss_color += self.criterionColor(self.fake_C_A, self.real_A, self.SegMask_A) * self.lambda_color \
-                if self.cond('DA', 'DC') else self.null
-            self.loss_color += self.criterionColor(self.rec_A_C, self.real_A, None) * self.lambda_color \
-                if self.cond('EC', 'DA', 'EA', 'DC') else self.null
+        self.loss_saturation = self.null
+        # self.loss_saturation += self.criterionSaturation(self.fake_C_A)
 
         self.loss_tv = {self.DA: 0., self.DB: 0., self.DC: 0., self.Fus: 0.}
         # Optional total variation loss on generate fake images, added by lfy
         self.loss_tv[self.DA] += self.lambda_tv * self.criterionTV(self.fake_A) if self.cond('EB', 'DA') else self.null
         self.loss_tv[self.DB] += self.lambda_tv * self.criterionTV(self.fake_B) if self.cond('EA', 'DB') else self.null
-        self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_A_C) if self.cond('EC',
-                                                                                               'DA') else self.null
+        # self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_A_C) if self.cond('EC', 'DA') else self.null
         # self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_B_C) if self.cond('EC',
         #                                                                                        'DB') else self.null
         if self.cond('Fus'):
@@ -1544,17 +1541,17 @@ class GanColorCombo(ComboGANModel):
                 elif self.epoch > 40:  # epoch 41-100
                     self.fake_A_pred_d, _ = self.netS.forward(fake_A_s.detach(), self.DB)
                     fake_B_pred, _ = self.netS.forward(fake_B_s, self.DB)
-                    real_BC_s = F.interpolate(self.fake_BC, size=[rand_size, rand_size], mode='bilinear',
+                    real_C_s = F.interpolate(self.real_C, size=[rand_size, rand_size], mode='bilinear',
                                               align_corners=False)
-                    real_BC_pred, _ = self.netS.forward(real_BC_s, self.DC)
+                    real_C_pred, _ = self.netS.forward(real_C_s, self.DC)
                     fake_A_BC_s = F.interpolate(self.fake_A_BC, size=[rand_size, rand_size], mode='bilinear',
                                                 align_corners=False)
+                    fake_A_BC_pred_d, _ = self.netS.forward(fake_A_BC_s.detach(), self.DA)
+
                     fake_C_A_s = F.interpolate(self.fake_C_A, size=[rand_size, rand_size], mode='bilinear',
                                                align_corners=False)
                     fake_C_A_pred, _ = self.netS.forward(fake_C_A_s, self.DC)
-                    fake_A_BC_pred_d, _ = self.netS.forward(fake_A_BC_s.detach(), self.DA)
 
-                    # real_BC_pred_d = real_BC_pred.detach()
                     if self.epoch >= 75:  # epoch 75-100
                         fake_A_BC_s = F.interpolate(self.fake_A_BC, size=[rand_size, rand_size], mode='bilinear',
                                                     align_corners=False)
@@ -1612,7 +1609,7 @@ class GanColorCombo(ComboGANModel):
                 if self.cond('B', dom='S'):
                     self.loss_S_enc[self.DB] = self.lambda_sc * seg_loss_B(real_B_pred, self.SegMask_B_update.long())
                 if self.cond('C', dom='S'):
-                    self.loss_S_enc[self.DC] = self.lambda_sc * seg_loss_B(real_BC_pred, self.SegMask_B_update.long())
+                    self.loss_S_enc[self.DC] = self.lambda_sc * seg_loss_B(real_C_pred, self.SegMask_B_update.long())
 
             else:
                 ####75-100 epoch, constraining semantic consistency after fixing segmentation networks of the two domains.
@@ -1628,7 +1625,8 @@ class GanColorCombo(ComboGANModel):
                 if self.cond('B', dom='S'):
                     self.loss_S_enc[self.DB] = self.lambda_sc * seg_loss_B(real_B_pred, SegMask_B_update2.long())
                 if self.cond('C', dom='S'):
-                    self.loss_S_enc[self.DC] = self.lambda_sc * seg_loss_B(real_BC_pred, SegMask_B_update2.long())
+                    self.loss_S_enc[self.DC] = self.lambda_sc * seg_loss_B(fake_A_BC_pred, SegMask_B_update2.long())
+        self.SegMask_B_update = F.interpolate(self.SegMask_B_update[None].float(), size=[256, 256], mode='nearest')
 
         # Optional Scale Robustness Loss on generated fake images, added by lfy
         self.loss_SR = {self.DC: 0.0}
@@ -1658,12 +1656,26 @@ class GanColorCombo(ComboGANModel):
 
         ########################
 
+        # loss_color
+        self.loss_color = self.null
+        if self.epoch > 20:
+            self.loss_color += self.criterionColor(self.fake_C_A, self.real_A, self.SegMask_A) * self.lambda_color \
+                if self.cond('DA', 'DC') else self.null
+            self.loss_color += self.criterionColor(self.rec_A_C, self.real_A, self.SegMask_A) * self.lambda_color \
+                if self.cond('EC', 'DA', 'EA', 'DC') else self.null
+            # self.loss_color += self.criterionColor(self.rec_A_BC, self.real_A, None) * self.lambda_color \
+            #     if self.cond('EC', 'DA', 'EA', 'DC') else self.null
+        if self.epoch > 30:
+            self.loss_color += self.criterionColor(self.fake_A_C, self.real_C, self.SegMask_B_update, chroma_adjust=True) * self.lambda_color \
+                if self.cond('EC', 'DA') else self.null
+            self.loss_color += self.criterionColor(self.fake_A_BC, self.fake_A_C.detach(), self.SegMask_B_update) * self.lambda_color \
+                if self.cond('EC', 'DA', 'EB', 'Fus') else self.null
+            self.loss_color += self.criterionColor(self.rec_C_A_BC, self.real_C, self.SegMask_B_update) * self.lambda_color
+
         if self.lambda_acl > 0:  # epoch > 40
             fake_A_Mask = F.interpolate(self.fake_A_pred_d.expand(1, 19, rand_size, rand_size).float(), size=[256, 256],
                                         mode='bilinear', align_corners=False)
-            real_B_Mask = F.interpolate(self.SegMask_B_update.detach().expand(1, 19, rand_size, rand_size).float(),
-                                        size=[256, 256],
-                                        mode='nearest')
+            real_B_Mask = self.SegMask_B_update.detach().expand(1, 19, 256, 256).detach()
             ##########Fake_IR_Composition, OAMix-TIR
             FakeIR_FG_Mask, out_FG_FakeIR, out_FG_RealVis, FakeIR_FG_Mask_flip, out_FG_FakeIR_flip, out_FG_RealVis_flip, FakeIR_FG_Mask_ori, HL_Mask, ComIR_Light_Mask = \
                 self.get_FG_MergeMask(self.SegMask_A.detach(), fake_A_Mask, self.real_A, self.fake_B.detach(),
@@ -1689,12 +1701,12 @@ class GanColorCombo(ComboGANModel):
             loss_tll = self.criterionTLL(self.fake_A, real_B_Mask, self.real_B.detach(),
                                          self.gpu_ids[0])
             ####Traffic light color loss
-            loss_TLight_color = self.criterionTLC(self.real_B, self.fake_A, real_B_Mask, \
+            loss_TLight_color = self.criterionTLC(self.real_B, self.fake_A, real_B_Mask,
                                                   Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
             loss_TLight_appe = loss_tll + loss_TLight_color
             ####Appearance consistency loss of domain B
             self.loss_AC[self.DB] = loss_ACL_B + loss_ACL_B_flip + self.criterionComIR(FakeIR_FG_Mask,
-                                                                                       FakeIR_FG_Mask_flip, \
+                                                                                       FakeIR_FG_Mask_flip,
                                                                                        real_B_Mask,
                                                                                        self.IR_com, self.fake_A_IR_com,
                                                                                        self.gpu_ids[0])
@@ -1826,9 +1838,10 @@ class GanColorCombo(ComboGANModel):
         # Optional loss on downsampled image before and after
         if self.lambda_fwd > 0:
             loss_fwd_A = self.criterionIdt(self.fake_B, self.real_A)
-            loss_fwd_B = self.criterionIdt(self.fake_A, self.real_B)
-            loss_fwd_C = (self.criterionIdt(self.fake_C_B * self.mask, self.real_C * self.mask) +
-                          self.criterionIdt(self.fake_B_C * self.mask, self.real_B * self.mask))
+            loss_fwd_B = self.criterionIdt(self.fake_A_BC, self.real_B)
+            loss_fwd_C = self.criterionIdt(self.fake_A_BC * self.mask, self.real_C * self.mask)
+            # loss_fwd_C = (self.criterionIdt(self.fake_C_B * self.mask, self.real_C * self.mask) +
+            #               self.criterionIdt(self.fake_B_C * self.mask, self.real_B * self.mask))
             loss_fwd = loss_fwd_A + loss_fwd_B + loss_fwd_C
         else:
             loss_fwd = 0
@@ -1846,7 +1859,9 @@ class GanColorCombo(ComboGANModel):
                   sum(self.loss_DS) +
                   sum(self.loss_SR) +
                   sum(self.loss_AC) +
-                  loss_TLight_appe + loss_likeness + self.loss_color)  ######Edit by lfy
+                  loss_TLight_appe + loss_likeness +
+                  self.loss_color +
+                  self.loss_saturation)
 
         loss_G.backward()
 
@@ -2210,19 +2225,19 @@ class GanColorCombo(ComboGANModel):
         if self.cond('B', dom='D'):
             fake_B = self.fake_pools[self.DB].query(self.fake_B)
             self.loss_D[self.DB] += self.backward_D_basic(self.pred_real_B, fake_B, self.DB)
-            fake_B_C = self.fake_pools[self.DB].query(self.fake_B_C)
-            self.loss_D[self.DB] += self.backward_D_basic(self.pred_real_B, fake_B_C, self.DB)
-            (self.loss_D[self.DB] / 2).backward()
+            # fake_B_C = self.fake_pools[self.DB].query(self.fake_B_C)
+            # self.loss_D[self.DB] += self.backward_D_basic(self.pred_real_B, fake_B_C, self.DB)
+            (self.loss_D[self.DB] / 1).backward()
 
         # D_C
         if self.cond('C', dom='D'):
             fake_C_A = self.fake_pools[self.DC].query(self.fake_C_A)
             self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_C_A, self.DC)
-            fake_C_B = self.fake_pools[self.DC].query(self.fake_C_B)
-            self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_C_B, self.DC)
-            fake_BC = self.fake_pools[self.DC].query(self.fake_BC)
-            self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_BC, self.DC)
-            (self.loss_D[self.DC] / 3).backward()
+            # fake_C_B = self.fake_pools[self.DC].query(self.fake_C_B)
+            # self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_C_B, self.DC)
+            # fake_BC = self.fake_pools[self.DC].query(self.fake_BC)
+            # self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_BC, self.DC)
+            (self.loss_D[self.DC] / 1).backward()
 
     def get_current_visuals(self, testing=False):
         if not testing:
@@ -2231,7 +2246,7 @@ class GanColorCombo(ComboGANModel):
                                 'fake_A': self.fake_A, 'fake_B': self.fake_B,
                                 'rec_A': self.rec_A, 'rec_B': self.rec_B,
                                 'seg_mask_A_up': self.SegMask_A_update[None],
-                                'seg_mask_B_up': self.SegMask_B_update[None]}
+                                'seg_mask_B_up': self.SegMask_B_update}
             else:
                 self.visuals = {'real_A': self.real_A, 'real_B': self.real_B, 'real_C': self.real_C,
                                 'real_Fus': self.real_Fus,
@@ -2240,12 +2255,12 @@ class GanColorCombo(ComboGANModel):
                                 'fake_A_C': self.fake_A_C, 'fake_B_C': self.fake_B_C, 'fake_C_A': self.fake_C_A,
                                 'fake_C_B': self.fake_C_B,
                                 'rec_A': self.rec_A, 'rec_B': self.rec_B, 'rec_B_A_BC': self.rec_B_A_BC,
-                                'rec_C_A_BC': self.rec_C_A_BC,
+                                'rec_C_A_BC': self.rec_C_A_BC, 'rec_A_BC': self.rec_A_BC,
                                 'rec_C_B': self.rec_C_B, 'rec_C_A': self.rec_C_A, 'rec_B_BC': self.rec_B_BC,
                                 'rec_C_BC': self.rec_C_BC, 'rec_BC': self.rec_BC,
                                 'rec_B_C': self.rec_B_C, 'rec_A_C': self.rec_A_C,
                                 'seg_mask_A_up': self.SegMask_A_update[None],
-                                'seg_mask_B_up': self.SegMask_B_update[None]}
+                                'seg_mask_B_up': self.SegMask_B_update}
         else:
             self.visuals = {'real_A': self.real_A, 'real_B': self.real_B, 'real_C': self.real_C,
                             'real_Fus': self.real_Fus,
@@ -2301,9 +2316,13 @@ class GanColorCombo(ComboGANModel):
             self.Fus = input['DFus'][0]
             col = ImageTensor(self.real_C, normalize=True)
             gray = col.GRAY()
-            mask_L = (gray >= (1 - self.opt.vis_night_hl_th) * 3) * (gray <= self.opt.vis_night_hl_th)
+            mask_L = ((gray >= gray.mean()-3*gray.std()) * (gray <= self.opt.vis_night_hl_th))
             mask_C = col.max(dim=1, keepdim=True)[0] > gray * math.sqrt(2)
-            self.mask = gaussian_blur(((mask_L + mask_C) > 0) * 1., [13, 13], [5, 5]).detach()
+            max_pool_k3 = nn.MaxPool2d(kernel_size=5, stride=1, padding=2)
+            mask_LC = ((mask_L + mask_C) > 0) * 1.
+            mask_LC = -max_pool_k3(-mask_LC)
+            self.mask = gaussian_blur(mask_LC, [13, 13], [5, 5]).detach()
+            # self.mask = torch.ones_like(gray)
 
     def optimize_parameters(self, epoch):
         self.alternate = (self.alternate + 1) % 2

@@ -833,7 +833,7 @@ class ResnetBlock(nn.Module):
 
 
 class ResnetBlock2(nn.Module):
-    def __init__(self, dim, norm_layer, use_dropout, use_bias, padding_type='reflect', n_domains=0, act=None):
+    def __init__(self, dim, norm_layer, use_dropout, use_bias, padding_type='reflect', n_domains=0, act=None, p_color=None):
         super(ResnetBlock2, self).__init__()
         act = act if act is not None else nn.PReLU()
         self.act = act
@@ -869,36 +869,53 @@ class ResnetBlock2(nn.Module):
         self.conv_block = SequentialContext(n_domains, *conv_block)
         self.fus_conv = nn.Linear(2 * dim, dim, bias=use_bias)
         self.final_block = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=3, padding=1, bias=use_bias),
-                                         norm_layer(dim),
-                                         nn.Tanh())
+                                         norm_layer(dim))
         self.flow_estimator = lambda x, y: run_tensor(x, y)
         self.wrapper = lambda x, f: backwarp_tensor(x, f)
+        self.conf_block = nn.Sequential(SNConv2d(2*dim, 1, kernel_size=7, padding=3, bias=use_bias),
+                                        nn.InstanceNorm2d(1, affine=True),
+                                        nn.Sigmoid())
+        self.flow = None
+        self.pedestrian_color = p_color if p_color is not None else 0.
 
     def forward(self, inp, *args):
         if args:
             mask, image_ir, image_rgb = args
-            flow = self.flow_estimator(image_ir, image_rgb)
+            if image_ir is not None:
+                self.flow = self.flow_estimator(image_ir, image_rgb)
+                rec_rgb = self.wrapper(image_rgb, self.flow).detach()
+                self.flow = F.interpolate(self.flow, inp[0].shape[-2:]).detach()
+            else:
+                rec_rgb = None
         else:
-            mask, image_ir, image_rgb = None, None, None
-            flow = None
+            mask, image_ir, image_rgb, rec_rgb = None, None, None, None
         if isinstance(inp, tuple):
             x, y = inp
-            if flow is not None:
-                flow = F.interpolate(flow, y.shape[-2:])
-            y = y if flow is None else self.wrapper(y, flow)
+            b, c, h, w = x.shape
+            y = y if self.flow is None else self.wrapper(y, self.flow)
             y_ = self.conv_block(y)
-            y_ = self.filter(y_, mask) if mask is not None else y_
-            xy_ = torch.cat([x, y_], dim=1).permute(0, 2, 3, 1)
-            res = self.fus_conv(xy_).permute(0, 3, 1, 2)
-            return self.final_block(res)
-        return inp + self.conv_block(inp)
+            # p_color_layer = torch.ones([b, 3, h, w]) * self.pedestrian_color
+            xy_ = torch.cat([x, y_], dim=1)
+            res = self.fus_conv(xy_.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+            conf = self.filter(self.conf_block(xy_).squeeze(), mask) if mask is not None else self.conf_block(xy_).squeeze()
+            res = x + (conf + 0.1) * self.final_block(res) * 2
+            # x_min, x_max = x.min(), x.max()
+            # x_ = x + x_
+            # x = (x_ - x_.min()) / (x_.max() - x_.min() + 1e-14)
+            # x = x * (x_max - x_min) + x_min
+            return res, rec_rgb
+        return inp + self.conv_block(inp), rec_rgb
 
     def filter(self, feat, mask):
         mask = mask.squeeze()
-        b, c_f, h_f, w_f = feat.shape
-        filter_r = repeat(mask, 'h w -> b c_f h w', b=b, c_f=c_f)
-        filter_s = F.interpolate(filter_r, feat.shape[-2:])
-        return feat * filter_s
+        # b, c_f, h_f, w_f = feat.shape
+        # filter_r = repeat(mask, 'h w -> b c_f h w', b=b, c_f=c_f)
+        filter_s = F.interpolate(mask[None, None], feat.shape[-2:])
+        # feat_min, feat_max = feat.min(), feat.max()
+        # feat_norm = (feat - feat_min) / (feat_max - feat_min + 1e-14)
+        feat_filtered = feat * filter_s
+        # feat = feat_filtered * (feat_max - feat_min) + feat_min
+        return feat_filtered
 
 
 class Linear(nn.Linear):
@@ -958,19 +975,23 @@ class ConcatBlock(nn.Module):
             conv_block_fus += [nn.Dropout(0.5)]
 
         conv_block_fus += [ResnetBlock2(dim, norm_layer, use_dropout, use_bias, padding_type, n_domains,
-                                        act)] * nb_blocks
+                                        act) for _ in range(nb_blocks)]
         #
         self.conv_block_fus = nn.Sequential(*conv_block_fus)
 
     def forward(self, x_input, y_input=None, *args):
+        rgb_rec = None
         if args:
             mask, image_ir, image_rgb = args
         else:
             mask, image_ir, image_rgb = None, None, None
         z = y_input
-        for conv in self.conv_block_fus:
-            z = conv((x_input, z), mask, image_ir, image_rgb)
-        return z
+        for i, conv in enumerate(self.conv_block_fus):
+            if i == 0:
+                z, rgb_rec = conv((x_input, z), mask, image_ir, image_rgb)
+            else:
+                z, _ = conv((x_input, z), mask, None, None)
+        return z, rgb_rec
 
 
 class ResBlock(nn.Module):
