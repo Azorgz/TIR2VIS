@@ -168,13 +168,10 @@ def UpdateIRSegGTv3(seg_tensor1, seg_tensor2, ori_seg_GT, input_IR, prob_th):
     mask_category1 = pred_max_category1.float()
     mask_category2 = pred_max_category2.float()
     mask_sub = mask_category1 - mask_category2
-    mask_inter = torch.zeros_like(mask_category1)
-    mask_inter = torch.where(mask_sub == 0.0, torch.ones_like(mask_category1), mask_inter)
+    mask_inter = torch.where(mask_sub == 0.0, 1, 0)
 
-    seg_HP_mask1 = torch.zeros_like(pred_max_value1)
-    seg_HP_mask1 = torch.where(pred_max_value1 > prob_th, torch.ones_like(pred_max_value1), seg_HP_mask1)
-    seg_HP_mask2 = torch.zeros_like(pred_max_value1)
-    seg_HP_mask2 = torch.where(pred_max_value2 > prob_th, torch.ones_like(pred_max_value1), seg_HP_mask2)
+    seg_HP_mask1 = torch.where(pred_max_value1 > prob_th, 1, 0)
+    # seg_HP_mask2 = torch.where(pred_max_value2 > prob_th, 1, 0)
     mask_inter_HP = seg_HP_mask1.mul(seg_HP_mask1)
 
     seg_inter_mask_UC_HP = mask_inter_HP.mul(mask_inter)

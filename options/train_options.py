@@ -5,21 +5,28 @@ from typing import Union
 def validate_epoch_load(epoch_load: Union[str, dict, int]) -> dict:
     if isinstance(epoch_load, str):
         if epoch_load.lower() == 'latest':
-            return {'G0': 'latest', 'G1': 'latest', 'G2': 'latest', 'G3': 'latest', 'G4': 'latest', 'G5': 'latest', 'G6': 'latest',
-        'D0': 'latest', 'D1': 'latest', 'D2': 'latest', 'S0': 'latest', 'S1': 'latest', 'S2': 'latest'}
+            return {'G0': 'latest', 'G1': 'latest', 'G2': 'latest', 'G3': 'latest', 'G4': 'latest', 'G5': 'latest',
+                    'G6': 'latest',
+                    'D0': 'latest', 'D1': 'latest', 'D2': 'latest', 'S0': 'latest', 'S1': 'latest', 'S2': 'latest'}
         elif epoch_load.lower() == 'lastest':
-            return {'G0': 'latest', 'G1': 'latest', 'G2': 'latest', 'G3': 'latest', 'G4': 'latest', 'G5': 'latest', 'G6': 'latest',
-        'D0': 'latest', 'D1': 'latest', 'D2': 'latest', 'S0': 'latest', 'S1': 'latest', 'S2': 'latest'}
+            return {'G0': 'latest', 'G1': 'latest', 'G2': 'latest', 'G3': 'latest', 'G4': 'latest', 'G5': 'latest',
+                    'G6': 'latest',
+                    'D0': 'latest', 'D1': 'latest', 'D2': 'latest', 'S0': 'latest', 'S1': 'latest', 'S2': 'latest'}
         elif epoch_load.isdigit():
-            return {'G0': int(epoch_load), 'G1': int(epoch_load), 'G2': int(epoch_load), 'G3': int(epoch_load), 'G4': int(epoch_load), 'G5': int(epoch_load), 'G6': int(epoch_load),
-        'D0': int(epoch_load), 'D1': int(epoch_load), 'D2': int(epoch_load), 'S0': int(epoch_load), 'S1': int(epoch_load), 'S2': int(epoch_load)}
+            return {'G0': int(epoch_load), 'G1': int(epoch_load), 'G2': int(epoch_load), 'G3': int(epoch_load),
+                    'G4': int(epoch_load), 'G5': int(epoch_load), 'G6': int(epoch_load),
+                    'D0': int(epoch_load), 'D1': int(epoch_load), 'D2': int(epoch_load), 'S0': int(epoch_load),
+                    'S1': int(epoch_load), 'S2': int(epoch_load)}
         else:
             raise ValueError("epoch_load must be 'latest', or an integer as a string.")
     elif isinstance(epoch_load, int):
-        return {'G0': int(epoch_load), 'G1': int(epoch_load), 'G2': int(epoch_load), 'G3': int(epoch_load), 'G4': int(epoch_load), 'G5': int(epoch_load), 'G6': int(epoch_load),
-        'D0': int(epoch_load), 'D1': int(epoch_load), 'D2': int(epoch_load), 'S0': int(epoch_load), 'S1': int(epoch_load), 'S2': int(epoch_load)}
+        return {'G0': int(epoch_load), 'G1': int(epoch_load), 'G2': int(epoch_load), 'G3': int(epoch_load),
+                'G4': int(epoch_load), 'G5': int(epoch_load), 'G6': int(epoch_load),
+                'D0': int(epoch_load), 'D1': int(epoch_load), 'D2': int(epoch_load), 'S0': int(epoch_load),
+                'S1': int(epoch_load), 'S2': int(epoch_load)}
     elif isinstance(epoch_load, dict):
-        ret = {'G0': -1, 'G1': -1, 'G2': -1, 'G3': -1, 'G4': -1, 'G5': -1, 'G6': -1, 'D0': -1, 'D1': -1, 'D2': -1, 'S0': -1, 'S1': -1, 'S2': -1}
+        ret = {'G0': -1, 'G1': -1, 'G2': -1, 'G3': -1, 'G4': -1, 'G5': -1, 'G6': -1, 'D0': -1, 'D1': -1, 'D2': -1,
+               'S0': -1, 'S1': -1, 'S2': -1}
         if 'G' in epoch_load:
             G = int(epoch_load['G']) if not isinstance(epoch_load['G'], str) else epoch_load['G']
             ret.update({'G0': G, 'G1': G, 'G2': G, 'G3': G, 'G4': G, 'G5': G, 'G6': G})
@@ -46,13 +53,14 @@ class TrainOptions(BaseOptions):
                                  help='continue training: load the latest model')
         self.parser.add_argument('--simple_train_channel', type=int, default=0,
                                  help='alternate between 0/1 and 0/2 mod every n steps')
-        self.parser.add_argument('--which_epoch', type=int, default=40,
+        self.parser.add_argument('--which_epoch', type=int, default=30,
                                  help='which epoch to load if continuing training')
-        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default='latest', #validate_epoch_load({'G': 'latest', 'G6': -1, 'S': 'latest', 'D': 'latest'}), #'latest', #validate_epoch_load(
-            # {'G0': 'latest', 'G1': -1, 'G2': 'latest', 'G3': 'latest', 'G4': -1, 'G5': 'latest', 'G6': 'latest',
-            #  'D0': 'latest', 'D2': 'latest', 'S': 'latest'}),
+        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default='latest', #validate_epoch_load({'G': 100, 'G2': 32, 'G5': 32, 'G6': 32, 'S': 100, 'D': 100, 'D2': 32}),  #'latest', #validate_epoch_load(
+                                 # {'G0': 'latest', 'G1': -1, 'G2': 'latest', 'G3': 'latest', 'G4': -1, 'G5': 'latest', 'G6': 'latest',
+                                 #  'D0': 'latest', 'D2': 'latest', 'S': 'latest'}),
                                  help='which epoch to load if continuing training')
-        self.parser.add_argument("--partial_train", type=Union[dict, None], default=None, #{'G': [2, 5, 6], 'D': [2], 'S': [2]},
+        self.parser.add_argument("--partial_train", type=Union[dict, None],
+                                 default=None, #{'G': [0, 2, 3, 5, 6], 'D': [2], 'S': [2]},
                                  help="Which domains of G - D - S are trained in ["
                                       "0 - 3: visible Encoder - Decoder"
                                       "1 - 4: IR Encoder - Decoder"
@@ -91,15 +99,16 @@ class TrainOptions(BaseOptions):
         self.parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for ADAM')
         self.parser.add_argument('--beta1', type=float, default=0.5, help='momentum term of ADAM')
 
-        self.parser.add_argument('--lambda_cycle', type=float, default=5.0, help='weight for cycle loss (A -> B -> A)') #5
-        self.parser.add_argument('--lambda_identity', type=float, default=1.0, # 1.0
+        self.parser.add_argument('--lambda_cycle', type=float, default=5.0,
+                                 help='weight for cycle loss (A -> B -> A)')  #5
+        self.parser.add_argument('--lambda_identity', type=float, default=1.0,  # 1.0
                                  help='weight for identity "autoencode" mapping (A -> A)')
-        self.parser.add_argument('--lambda_latent', type=float, default=0.5, # 0.5
+        self.parser.add_argument('--lambda_latent', type=float, default=0.5,  # 0.5
                                  help='weight for latent-space loss (A -> z -> B -> z)')
         self.parser.add_argument('--lambda_forward', type=float, default=0.2,
                                  help='weight for forward loss (A -> B; try 0.2)')
         self.parser.add_argument('--lambda_ssim', type=float, default=2.0, help='weight for SSIM loss')
-        self.parser.add_argument('--lambda_tv', type=float, default=5.0, help='weight for TV loss') # 5.
+        self.parser.add_argument('--lambda_tv', type=float, default=5.0, help='weight for TV loss')  # 5.
         self.parser.add_argument('--lambda_sc', type=float, default=1.0, help='weight for SC loss')
         self.parser.add_argument('--lambda_vgg', type=float, default=1.0, help='weight for VGG loss')
         self.parser.add_argument('--vis_prob_th', type=float, default=0.925,
