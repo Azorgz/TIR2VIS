@@ -1772,15 +1772,15 @@ class GanColorCombo(ComboGANModel):
             ###Conditional Gradient Repair loss
             ########Domain-specific losses include CGR loss and ACA loss.
             self.loss_DS[self.DB] += self.lambda_CGR * self.criterionCGR(self.fake_A,
-                                                                         self.SegMask_B_update[None].detach(),
+                                                                         self.SegMask_B_update.detach(),
                                                                          self.real_B.detach(), self.gpu_ids[0])
             if self.cond('Fus'):
                 self.loss_DS[self.DC] += self.lambda_CGR * self.criterionCGR(self.fake_A_BC,
-                                                                             self.SegMask_B_update[None].detach(),
+                                                                             self.SegMask_B_update.detach(),
                                                                              self.real_B.detach(), self.gpu_ids[0])
             elif self.cond('EC'):
                 self.loss_DS[self.DC] += self.lambda_CGR * self.criterionCGR(self.fake_A_C,
-                                                                             self.SegMask_B_update[None].detach(),
+                                                                             self.SegMask_B_update.detach(),
                                                                              self.real_B.detach(), self.gpu_ids[0])
             self.loss_DS[self.DA] += self.criterionACA(self.SegMask_A_update.detach(), encoded_A.detach(), \
                                                        self.SegMask_B_update.detach(), rec_encoded_B, 4, 100000,
