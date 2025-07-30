@@ -1,4 +1,5 @@
 import math
+import socket
 from typing import Literal
 
 import numpy as np
@@ -161,7 +162,7 @@ class ComboGANModel(BaseModel):
             self.often_balance = opt.often_balance
 
             ####Added options
-            base = './datasets/FLIR/'
+            base = './datasets/FLIR/' if 'laptop' in socket.gethostname() else '/silenus/PROJECTS/pr-remote-sensing-1a/godeta/FLIR/'
             self.patch_num_sqrt = opt.sqrt_patch_num
             self.grad_th_vis = opt.grad_th_vis
             self.grad_th_IR = opt.grad_th_IR
