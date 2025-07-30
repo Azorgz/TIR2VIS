@@ -139,13 +139,13 @@ class EBGCDataset(BaseDataset):
                                                                                                  mode='lrtb').match_shape(
                 img, mode='nearest') * 255).to(torch.uint8)
 
-        w1 = crop_pos_h
-        h1 = crop_pos_w
-        img_crop = img.crop((w1, w1 + 256, h1, h1 + 256), mode='lrtb')
-        edge_map_crop = edge_map.crop((w1, w1 + 256, h1, h1 + 256), mode='lrtb')
-        seg_mask_crop = seg_mask.crop((w1, w1 + 256, h1, h1 + 256), mode='lrtb')
+        h1 = crop_pos_h
+        w1 = crop_pos_w
+        img_crop = img.crop((w1, w1 + 256, h1, h1 + 256), mode='xxyy')
+        edge_map_crop = edge_map.crop((w1, w1 + 256, h1, h1 + 256), mode='xxyy')
+        seg_mask_crop = seg_mask.crop((w1, w1 + 256, h1, h1 + 256), mode='xxyy')
         if sup_dom is not None:
-            img_sup_crop = img_sup.crop((w1, w1 + 256, h1, h1 + 256), mode='lrtb')
+            img_sup_crop = img_sup.crop((w1, w1 + 256, h1, h1 + 256), mode='xxyy')
 
         transform_list_torch = [ImageTensor.to_tensor, transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
         transform = transforms.Compose(transform_list_torch)

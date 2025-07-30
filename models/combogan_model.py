@@ -1669,7 +1669,7 @@ class GanColorCombo(ComboGANModel):
             # self.loss_color += self.criterionColor(self.rec_C_A_BC, self.real_C, self.SegMask_B_update) * self.lambda_color
 
         if self.lambda_acl > 0:  # epoch > 40
-            fake_A_Mask = F.interpolate(self.fake_A_pred_d.expand(1, 19, rand_size, rand_size).float(), size=[256, 256],
+            fake_A_Mask = F.interpolate(fake_A_BC_pred_d.expand(1, 19, rand_size, rand_size).float(), size=[256, 256],
                                         mode='bilinear', align_corners=False)
             real_B_Mask = self.SegMask_B_update.detach().expand(1, 19, 256, 256).detach()
             ##########Fake_IR_Composition, OAMix-TIR

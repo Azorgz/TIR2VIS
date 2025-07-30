@@ -1506,6 +1506,8 @@ def split_im(im, chunk_nb):
     return im.unfold(-2, chunk_size_h, chunk_size_h).unfold(-2, chunk_size_w, chunk_size_w).reshape(*im.shape[:2], chunk_nb**2, chunk_size_h, chunk_size_w)
 
 
+# def get_light_color()
+
 def detect_blob(image, method: Literal['LoG', 'DoG', 'DoH'] = 'LoG', min_radius=1, scale_blob=1, scale=3):
     h, w = image.shape
     image_process = torch.from_numpy(image - image.mean() - image.std()).clamp(0, 1).numpy()
