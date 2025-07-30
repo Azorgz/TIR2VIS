@@ -1612,16 +1612,15 @@ class GanColorCombo(ComboGANModel):
                 seg_loss_A = self.update_class_criterion(self.SegMask_A_update.long())
                 if self.cond('A', dom='S'):
                     self.loss_S_enc[self.DA] = self.lambda_sc * seg_loss_A(fake_B_pred, self.SegMask_A_update.long())
-                    print(self.SegMask_A_update.long().shape)
                 self.SegMask_B_update = self.UpdateIRGTv2(real_B_pred.detach(), fake_A_BC_pred_d,
                                                           SegMask_B_s[0].long(), real_B_s, self.IR_prob_th)
                 SegMask_B_update2 = F.interpolate(self.SegMask_B_update.expand(1, 1, 256, 256).float(),
                                                   size=[rand_size, rand_size], mode='nearest')
                 seg_loss_B = self.update_class_criterion(SegMask_B_update2[0].long())
                 if self.cond('B', dom='S'):
-                    self.loss_S_enc[self.DB] = self.lambda_sc * seg_loss_B(real_B_pred, SegMask_B_update2.long())
+                    self.loss_S_enc[self.DB] = self.lambda_sc * seg_loss_B(real_B_pred, SegMask_B_update2[0].long())
                 if self.cond('C', dom='S'):
-                    self.loss_S_enc[self.DC] = self.lambda_sc * seg_loss_B(fake_A_BC_pred, SegMask_B_update2.long())
+                    self.loss_S_enc[self.DC] = self.lambda_sc * seg_loss_B(fake_A_BC_pred, SegMask_B_update2[0].long())
         self.SegMask_B_update = F.interpolate(self.SegMask_B_update[None].float(), size=[256, 256], mode='nearest')
 
         # Optional Scale Robustness Loss on generated fake images, added by lfy
