@@ -686,7 +686,7 @@ def BiasCorrLossV2(Seg_mask, fake_Night, real_vis, rec_vis, real_vis_edgemap, gp
         real_vis_SLight_max_pos = torch.argmax(real_vis_SLight_region)
         light_radius = torch.sqrt(torch.where(real_vis_SLight_region > real_vis_SLight_region.max() * 0.9, 1, 0).sum() * torch.pi + 1e-14)
         color = real_img_norm[:, :, real_vis_SLight_max_pos[0], real_vis_SLight_max_pos[1]]
-        fake_RGB_Night =
+        # fake_RGB_Night =
         SLight_fake_region = SLight_mask_ori.mul(fake_img_norm)
         SLight_high_mask = torch.where(real_vis_SLight_region > real_vis_SLight_mean, 1., 0.)
         fake_VIS_SLight_region_high = SLight_high_mask.mul(fake_VIS_gray) + (1. - SLight_high_mask)
