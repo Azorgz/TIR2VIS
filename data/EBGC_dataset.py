@@ -121,7 +121,6 @@ class EBGCDataset(BaseDataset):
         path = self.paths[dom][idx]
         img = ImageTensor(path).crop(crop_xxyy, mode='lrtb').resize((400, 500)).crop((200, 250, 288, 360), mode='uvhw',
                                                                                      center=True).RGB()
-        img = img ** 1.5 if sup_dom is None else img ** 0.8
         img_name = path.split('/')[-1]
 
         if sup_dom is not None:
@@ -251,8 +250,7 @@ class EBGCDataset(BaseDataset):
                             pos_w_B = int(line_content_split_B[2]) - 1
                             index_B = self.paths[DB].index(temp_img_path_B)
 
-                        B_img, edge_map_B, seg_mask_B = self.load_image_train_crop(DB, index_B, pos_h_B, pos_w_B)
-                        C_img, edge_map_B, seg_mask_B = self.load_image_train_crop(DC, index_B, pos_h_B, pos_w_B)
+                        B_img, C_img, Fus_img, edge_map_B, seg_mask_B = self.load_image_train_crop(DB, index_B, pos_h_B, pos_w_B, sup_dom=DC, crop=True)
                         # bundle = {'B': B_img, 'DB': DB, 'path': B_path, 'EMB':edge_map_B, 'SMB':seg_mask_B}
 
                     else:
