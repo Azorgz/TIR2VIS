@@ -6,6 +6,7 @@ import oyaml
 import torchvision.transforms as transforms
 from einops import repeat
 from kornia.filters import guided_blur
+from torchvision.transforms.v2.functional import hflip
 
 from ImagesCameras import ImageTensor
 from ImagesCameras.Metrics import SSIM
@@ -146,13 +147,6 @@ class EBGCDataset(BaseDataset):
         seg_mask_crop = seg_mask.crop((w1, w1 + 256, h1, h1 + 256), mode='lrtb')
         if sup_dom is not None:
             img_sup_crop = img_sup.crop((w1, w1 + 256, h1, h1 + 256), mode='lrtb')
-
-        if np.random.rand() < 0.5:
-            img_crop = img_crop[..., ::-1, :]
-            edge_map_crop = edge_map_crop[..., ::-1, :]
-            seg_mask_crop = seg_mask_crop[..., ::-1, :]
-            if sup_dom is not None:
-                img_sup_crop = img_sup_crop[..., ::-1, :]
 
         transform_list_torch = [ImageTensor.to_tensor, transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
         transform = transforms.Compose(transform_list_torch)
