@@ -112,44 +112,61 @@ class EBGCDataset(BaseDataset):
         lab[:, 1:] = AB
         return lab
 
-    def load_image_train_crop(self, dom, idx, crop_pos_h, crop_pos_w):
-        path = self.paths[dom][idx]
-        img = np.array(Image.open(path).convert('RGB'))
-        path_split = path.split('/')
-        img_name = path_split[-1]
-        if dom == 0:
-            edge_map_file = self.Vis_edge_paths + img_name
-            seg_mask_file = self.Vis_mask_paths + img_name
-            seg_mask = np.array(Image.open(seg_mask_file))
+    def load_image_train_crop(self, dom, idx, crop_pos_h, crop_pos_w, sup_dom=None, crop=None):
+        if crop:
+            crop_xxyy = self.crop_xxyy[idx]
         else:
-            edge_map_file = self.IR_edge_paths + img_name
-            seg_mask_file = self.IR_mask_paths + img_name
-            seg_mask = np.array(Image.open(seg_mask_file))
+            crop_xxyy = [0, 0, 0, 0]
+        path = self.paths[dom][idx]
+        img = ImageTensor(path).crop(crop_xxyy, mode='lrtb').resize((400, 500)).crop((200, 250, 288, 360), mode='uvhw',
+                                                                                     center=True).RGB()
+        img = img ** 1.5 if sup_dom is None else img ** 0.8
+        img_name = path.split('/')[-1]
 
-        edge_map = np.array(Image.open(edge_map_file).convert('L'))
+        if sup_dom is not None:
+            img_sup = ImageTensor(self.paths[sup_dom][idx]).RGB().crop(crop_xxyy, mode='lrtb').resize((400, 500)).crop(
+                (200, 250, 288, 360), mode='uvhw', center=True) ** (1 + torch.rand([1])/4)
+        if dom == 0:
+            edge_map = ImageTensor(self.Vis_edge_paths + img_name).GRAY().crop(crop_xxyy, mode='lrtb').resize(
+                (400, 500)).crop((200, 250, 288, 360), mode='uvhw', center=True)
+            seg_mask = (ImageTensor(self.Vis_mask_paths + img_name.replace('.jpg', '.png')).crop(crop_xxyy,
+                                                                                                 mode='lrtb').match_shape(
+                img, mode='nearest') * 255).to(torch.uint8)
+        else:
+            edge_map = ImageTensor(self.IR_edge_paths + img_name).GRAY().crop(crop_xxyy, mode='lrtb').resize(
+                (400, 500)).crop((200, 250, 288, 360), mode='uvhw', center=True)
+            seg_mask = (ImageTensor(self.IR_mask_paths + img_name.replace('.jpeg', '.png')).crop(crop_xxyy,
+                                                                                                 mode='lrtb').match_shape(
+                img, mode='nearest') * 255).to(torch.uint8)
 
         w1 = crop_pos_h
         h1 = crop_pos_w
-
-        img_crop = img[w1 : (w1 + 256), h1 : (h1 + 256)]
-        edge_map_crop = edge_map[w1 : (w1 + 256), h1 : (h1 + 256)]
-        seg_mask_crop = seg_mask[w1 : (w1 + 256), h1 : (h1 + 256)]
+        img_crop = img.crop((w1, w1 + 256, h1, h1 + 256), mode='lrtb')
+        edge_map_crop = edge_map.crop((w1, w1 + 256, h1, h1 + 256), mode='lrtb')
+        seg_mask_crop = seg_mask.crop((w1, w1 + 256, h1, h1 + 256), mode='lrtb')
+        if sup_dom is not None:
+            img_sup_crop = img_sup.crop((w1, w1 + 256, h1, h1 + 256), mode='lrtb')
 
         if np.random.rand() < 0.5:
-            img_crop = img_crop[:,::-1]
-            edge_map_crop = edge_map_crop[:,::-1]
-            seg_mask_crop = seg_mask_crop[:,::-1]
+            img_crop = img_crop[..., ::-1, :]
+            edge_map_crop = edge_map_crop[..., ::-1, :]
+            seg_mask_crop = seg_mask_crop[..., ::-1, :]
+            if sup_dom is not None:
+                img_sup_crop = img_sup_crop[..., ::-1, :]
 
-        transform_list_torch = [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
-        transform_new = transforms.Compose(transform_list_torch)
-        # img = torch.from_numpy(img_file.transpose((2, 0, 1)))
-        img_new = Image.fromarray(np.uint8(img_crop))
-        img_res = transform_new(img_new)
-        # print(img_res.size)
-        edge_map_crop = edge_map_crop / 255.0
-        seg_mask_crop = np.asarray(Image.fromarray(seg_mask_crop), dtype=np.int64)
+        transform_list_torch = [ImageTensor.to_tensor, transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
+        transform = transforms.Compose(transform_list_torch)
 
-        return img_res, torch.tensor(edge_map_crop), seg_mask_crop.copy()
+        if sup_dom is not None:
+            img_fus = transform(self.fus_input(img_sup_crop, img_crop)**(1 + torch.rand([1])/4))
+            img_res = transform(img_crop)
+            img_sup_res = transform(img_sup_crop)
+            return (img_res.squeeze(0), img_sup_res.squeeze(0), img_fus.squeeze(0),
+                    edge_map_crop.squeeze(0), (seg_mask_crop.squeeze() * 255).to(torch.uint8).clone())
+
+        img_res = transform(img_crop)
+        return img_res.squeeze(0), edge_map_crop.squeeze(0), (seg_mask_crop.squeeze() * 255).to(torch.uint8).clone()
+
 
 
     def count_class_ratio(self, input_mask):
