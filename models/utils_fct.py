@@ -1,4 +1,5 @@
 import functools
+import math
 from typing import Literal
 import numpy as np
 import torch
@@ -1526,21 +1527,28 @@ def create_fake_TLight(img, mask_p):
     for i in range(3):
         img_processed = MaxPool_k5(img_processed)
         img_processed = gaussian_blur(img_processed / (img_processed.max() + 1e-14), (11, 11), (5., 5.))
-    # img_processed_final = gaussian_blur(img_processed/(img_processed.max() + 1e-14), (21, 21), (11.,11.))
     img_processed = (img_processed / (img_processed.max() + 1e-14) + TLight_region*0.1).clamp(0, 1)
     fake = torch.zeros_like(img_processed).to(img.device)
-    label_connect, num = measure.label(img_processed[0].cpu(), connectivity=2, background=0, return_num=True)
+    label_connect, num = measure.label((img_processed.mean(dim=1)>img_processed.mean() + img_processed.std()).cpu(), connectivity=2, background=0, return_num=True)
     for j in range(1, num + 1):
         "Since background index is 0, the num is num+1."
         temp_connect_mask = torch.where(torch.from_numpy(label_connect) == j, 1.0, 0.0).to(img.device)
         light_i = temp_connect_mask.expand_as(img_processed) * img_processed
-        patch_mean = light_i[light_i > 0].mean(dim=[-1, -2])[0]
-        if patch_mean[0] - patch_mean[2] > 0:  # if not green
-            light_i = Tensor([1.2, 0.2, 0]).to(light_i.device)[None, :, None, None].expand_as(light_i) * light_i
+        patch_max = light_i[0].flatten(1)[:, light_i[0].flatten(1).mean(dim=0)>0].max(dim=1)[0]
+        patch_mean = light_i[0].flatten(1)[:, light_i[0].flatten(1).mean(dim=0)>0].mean(dim=1)
+        patch_overlap = gaussian_blur(temp_connect_mask.expand_as(img_processed), (11, 11), (7., 7.))
+        patch_overlap /= patch_overlap.max()
+        # patch_overlap_neg = (1 - patch_overlap) * (patch_overlap>0)
+        if patch_mean[0] - 2 * patch_mean[2] > 0:  # if red
+            light_i = patch_overlap * (patch_max[None, :, None, None].expand_as(light_i) + 0.2)
+            light_i = light_i.clamp(0, 1)
+        elif patch_mean[2] - 2 * patch_mean[0] > 0:  # if green
+            light_i = patch_overlap * (patch_max[None, :, None, None].expand_as(light_i) + 0.2)
+            light_i = light_i.clamp(0, 1)
         else:
-            light_i = Tensor([0.1, 1.1, 0.8]).to(light_i.device)[None, :, None, None].expand_as(light_i) * light_i
+            light_i = 0 * light_i
         fake += light_i
-    return (fake * 2).clamp(0, 1)
+    return fake/fake.max()
 
 
 def create_fake_Light(img, mask_p):
