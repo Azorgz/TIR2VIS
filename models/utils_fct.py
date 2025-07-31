@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from kmeans_pytorch import kmeans
-from kornia.filters import get_gaussian_kernel2d
+from kornia.filters import get_gaussian_kernel2d, filter2d, get_gaussian_kernel1d
 from torch import nn, Tensor, conv2d
 import skimage
 from skimage import measure
@@ -12,6 +12,8 @@ from torch.nn import init, Conv2d, Softmax2d
 from math import sqrt
 from skimage.feature import blob_dog, blob_log, blob_doh
 import cv2 as cv
+import matplotlib.colors as mcolors
+from torchvision.transforms.functional import gaussian_blur
 
 from ImagesCameras import ImageTensor
 
@@ -109,8 +111,8 @@ def OnlSemDisModule(seg_tensor1, seg_tensor2, ori_seg_GT, input_IR, prob_th):
     sm = torch.nn.Softmax(dim=1)
     pred_sm1 = sm(seg_tensor1.detach())
     pred_sm2 = sm(seg_tensor2.detach())
-    pred_max_value1,  pred_max_category1 = torch.max(pred_sm1, dim=1)
-    pred_max_value2,  pred_max_category2 = torch.max(pred_sm2, dim=1)
+    pred_max_value1, pred_max_category1 = torch.max(pred_sm1, dim=1)
+    pred_max_value2, pred_max_category2 = torch.max(pred_sm2, dim=1)
     mask_category1 = pred_max_category1.float()
     mask_category2 = pred_max_category2.float()
 
@@ -561,8 +563,8 @@ def getLightRegionColor(cls_idx, input_img, mask, gpu_ids=[]):
         Light_region = input_img.mul(Light_mask.detach())
         Light_region_mean_channels = torch.mean(torch.mean(Light_region, dim=-1), dim=-1)
         sum_channel = (Light_region_mean_channels[:, 0] * coefflight_green[0] +
-               Light_region_mean_channels[:, 1] * coefflight_green[1] +
-               Light_region_mean_channels[:, 2] * coefflight_green[2])
+                       Light_region_mean_channels[:, 1] * coefflight_green[1] +
+                       Light_region_mean_channels[:, 2] * coefflight_green[2])
         if sum_channel > 0:
             color = Tensor([0., 1., 0.2]).to(input_img.device)
         else:
@@ -628,7 +630,6 @@ def RefineLightMask(Seg_mask, real_vis, gpu_ids=[]):
     Segmask_Light_DN_k5 = LightMaskDenoised(Seg_mask, real_vis, 5, gpu_ids)
     Segmask_Light_DN_k3 = LightMaskDenoised(Segmask_Light_DN_k5, real_vis, 3, gpu_ids)
     return torch.where(Segmask_Light_DN_k3 == 6.0, 1., 0.)
-
 
 
 def PatchNormFea(input_array, sqrt_patch_num, gpu_ids=[]):
@@ -1326,10 +1327,11 @@ def UpdateFakeVISSegGT(real_vis_night, Seg_mask, dis_lum):
     veg_mask = torch.where(GT_mask == 8.0, torch.ones_like(GT_mask), torch.zeros_like(GT_mask))
     real_vis_night_norm = (real_vis_night + 1.0) * 0.5
     real_vis_night_gray = torch.squeeze(
-        .299 * real_vis_night_norm[:, 0:1, :, :] + .587 * real_vis_night_norm[:, 1:2, :, :] + .114 * real_vis_night_norm[:, 2:3, :, :])
+        .299 * real_vis_night_norm[:, 0:1, :, :] + .587 * real_vis_night_norm[:, 1:2, :,
+                                                          :] + .114 * real_vis_night_norm[:, 2:3, :, :])
     veg_gray = veg_mask * real_vis_night_gray
-    mask_high_light = torch.where(veg_gray > dis_lum, torch.ones_like(Seg_mask)*255., Seg_mask)
-    mask_low_light = torch.where(veg_gray < dis_lum, torch.ones_like(Seg_mask)*255., mask_high_light)
+    mask_high_light = torch.where(veg_gray > dis_lum, torch.ones_like(Seg_mask) * 255., Seg_mask)
+    mask_low_light = torch.where(veg_gray < dis_lum, torch.ones_like(Seg_mask) * 255., mask_high_light)
     return mask_low_light
 
 
@@ -1500,10 +1502,84 @@ def hsv_to_rgb(input_hsv):
     return rgb
 
 
+def get_light_color(img_ref, img_test, pos, radius):
+    h, w = img_ref.shape[-2:]
+    patch_ref = img_ref[:, :, max(int(pos[0] - radius), 0):min(int(pos[0] + radius), h),
+            max(int(pos[1] - radius), 0):min(int(pos[1] + radius), w)]
+    patch_mean = patch_ref.mean(dim=[2, 3])[0]
+    if patch_mean[0] - patch_mean[2] > 0:  # if not green
+        if patch_mean[0] > patch_mean[1] * 1.5:  # if not orange
+            color = Tensor([1, 0.2, 0]).to(img_ref.device)
+        else:
+            color = Tensor([1, 0.5, 0.1]).to(img_ref.device)
+    else:
+        color = Tensor([0.1, 0.9, 0.4]).to(img_ref.device)
+    return color
+
+
+def create_fake_TLight(img, mask_p):
+    TLight_region = mask_p.mul(img)
+    img_processed = TLight_region ** 7
+    img_processed = img_processed/img_processed.max()
+    padsize = 5 // 2
+    MaxPool_k5 = nn.MaxPool2d(5, stride=1, padding=padsize)
+    for i in range(3):
+        img_processed = MaxPool_k5(img_processed)
+        img_processed = gaussian_blur(img_processed / (img_processed.max() + 1e-14), (11, 11), (5., 5.))
+    # img_processed_final = gaussian_blur(img_processed/(img_processed.max() + 1e-14), (21, 21), (11.,11.))
+    img_processed = (img_processed / (img_processed.max() + 1e-14) + TLight_region*0.1).clamp(0, 1)
+    fake = torch.zeros_like(img_processed).to(img.device)
+    label_connect, num = measure.label(img_processed[0].cpu(), connectivity=2, background=0, return_num=True)
+    for j in range(1, num + 1):
+        "Since background index is 0, the num is num+1."
+        temp_connect_mask = torch.where(torch.from_numpy(label_connect) == j, 1.0, 0.0).to(img.device)
+        light_i = temp_connect_mask.expand_as(img_processed) * img_processed
+        patch_mean = light_i[light_i > 0].mean(dim=[-1, -2])[0]
+        if patch_mean[0] - patch_mean[2] > 0:  # if not green
+            light_i = Tensor([1.2, 0.2, 0]).to(light_i.device)[None, :, None, None].expand_as(light_i) * light_i
+        else:
+            light_i = Tensor([0.1, 1.1, 0.8]).to(light_i.device)[None, :, None, None].expand_as(light_i) * light_i
+        fake += light_i
+    return (fake * 2).clamp(0, 1)
+
+
+def create_fake_Light(img, mask_p):
+    fake = torch.zeros_like(img).to(img.device)
+    b, c, h_, w_ = fake.shape
+    label_connect, num = measure.label(mask_p.cpu(), connectivity=2, background=0, return_num=True)
+    for j in range(1, num + 1):
+        "Since background index is 0, the num is num+1."
+        temp_connect_mask = torch.where(torch.from_numpy(label_connect) == j, 1.0, 0.0).to(img.device)
+        h, w = temp_connect_mask.sum(dim=-2).max() + 1e-14, temp_connect_mask.sum(dim=-1).max()
+        kernel_size = max(int(h * 2 + 1), 5), max(int(w * 2 + 1), 5)
+        sigma = torch.tensor([min(h / 2, kernel_size[0]/3)]).to(img.device), torch.tensor([min(w / 2, kernel_size[1]/3)]).to(img.device)
+        if w / h > 1.75:
+            # Horizontal white streetlight from the top
+            Light_region = mask_p.mul(torch.Tensor([1., 0.9, 0.85])[None, :, None, None].expand_as(img).to(mask_p.device))
+            #drawn a bit lower
+            temp = torch.zeros([b, c, h_+3, w_]).to(img.device)
+            temp[:, :, 3:] = Light_region
+            Light_region = temp[:, :, :-3]
+            fake += gaussian_blur(Light_region, kernel_size, (1.6, 2))
+        else:
+            color = [1., 0.7, 0.05] if torch.rand(1)>0.5 else [1., 0.95, 0.95]
+            Light_region = mask_p.mul(
+                torch.Tensor(color)[None, :, None, None].expand_as(img).to(mask_p.device))
+            fake += gaussian_blur(Light_region, kernel_size, sigma)
+    img_processed = fake / fake.max() + img*mask_p
+    return img_processed.clamp(0, 1)
+
+
+
+
+
 def split_im(im, chunk_nb):
-    chunk_size_w = im.shape[-1]//chunk_nb
-    chunk_size_h = im.shape[-2]//chunk_nb
-    return im.unfold(-2, chunk_size_h, chunk_size_h).unfold(-2, chunk_size_w, chunk_size_w).reshape(*im.shape[:2], chunk_nb**2, chunk_size_h, chunk_size_w)
+    chunk_size_w = im.shape[-1] // chunk_nb
+    chunk_size_h = im.shape[-2] // chunk_nb
+    return im.unfold(-2, chunk_size_h, chunk_size_h).unfold(-2, chunk_size_w, chunk_size_w).reshape(*im.shape[:2],
+                                                                                                    chunk_nb ** 2,
+                                                                                                    chunk_size_h,
+                                                                                                    chunk_size_w)
 
 
 # def get_light_color()
@@ -1515,36 +1591,37 @@ def detect_blob(image, method: Literal['LoG', 'DoG', 'DoH'] = 'LoG', min_radius=
         blobs = blob_log(image_process, max_sigma=10, num_sigma=5, threshold=0.2)
         for i in range(scale):
             image_process = cv.pyrDown(image_process)
-            np.concatenate((blobs, blob_log(image_process, max_sigma=50, num_sigma=10, threshold=0.1)*(i+1)**2))
+            np.concatenate((blobs, blob_log(image_process, max_sigma=50, num_sigma=10, threshold=0.1) * (i + 1) ** 2))
         blobs[:, 2] = blobs[:, 2] * sqrt(2)
     elif method == 'DoG':
         blobs = blob_dog(image_process, max_sigma=50, threshold=0.1)
         for i in range(scale):
             image_process = cv.pyrDown(image_process)
-            np.concatenate((blobs, blob_dog(image_process, max_sigma=50, threshold=0.1)*(i+1)**2))
+            np.concatenate((blobs, blob_dog(image_process, max_sigma=50, threshold=0.1) * (i + 1) ** 2))
         blobs[:, 2] = blobs[:, 2] * sqrt(2)
     elif method == 'DoH':
         blobs = blob_doh(image_process, max_sigma=50, threshold=0.01)
         for i in range(scale):
             image_process = cv.pyrDown(image_process)
-            np.concatenate((blobs, blob_doh(image_process, max_sigma=50, threshold=0.01)*(i+1)**2))
+            np.concatenate((blobs, blob_doh(image_process, max_sigma=50, threshold=0.01) * (i + 1) ** 2))
     else:
         raise TypeError
     res = torch.zeros([1, 3, h, w]).to(image.device)
     for blob in blobs:
         if blob[2] > min_radius:
-            rad = int(blob[2])*scale_blob
+            rad = int(blob[2]) * scale_blob
             rad_k = rad * 2 + 1
-            ker = get_gaussian_kernel2d((rad_k, rad_k), (blob[2]**0.5, blob[2]**0.5)).squeeze(0)
-            ker = ker.clamp(ker.max()/15, 1)
+            ker = get_gaussian_kernel2d((rad_k, rad_k), (blob[2] ** 0.5, blob[2] ** 0.5)).squeeze(0)
+            ker = ker.clamp(ker.max() / 15, 1)
             ker = ker - ker.min()
-            x0, x1 = int(max(0, np.ceil(blob[1] - ker.shape[-1]/2))), int(min(w, np.ceil(blob[1] + ker.shape[-1]/2)))
-            y0, y1 = int(max(0, np.ceil(blob[0] - ker.shape[-2]/2))), int(min(h, np.ceil(blob[0] + ker.shape[-2]/2)))
-            y0_ker, y1_ker = 0 if y0 > 0 else rad_k - (y1-y0), rad_k if y1 < h else int(y1-y0)
-            x0_ker, x1_ker = 0 if x0 > 0 else rad_k - (x1-x0), rad_k if x1 < w else int(x1-x0)
-            res[:, :, y0:y1, x0:x1] += ker[y0_ker:y1_ker,  x0_ker:x1_ker]
+            x0, x1 = int(max(0, np.ceil(blob[1] - ker.shape[-1] / 2))), int(
+                min(w, np.ceil(blob[1] + ker.shape[-1] / 2)))
+            y0, y1 = int(max(0, np.ceil(blob[0] - ker.shape[-2] / 2))), int(
+                min(h, np.ceil(blob[0] + ker.shape[-2] / 2)))
+            y0_ker, y1_ker = 0 if y0 > 0 else rad_k - (y1 - y0), rad_k if y1 < h else int(y1 - y0)
+            x0_ker, x1_ker = 0 if x0 > 0 else rad_k - (x1 - x0), rad_k if x1 < w else int(x1 - x0)
+            res[:, :, y0:y1, x0:x1] += ker[y0_ker:y1_ker, x0_ker:x1_ker]
     return res == 0
-
 
 # def detect_blob(image, min_radius=2, scale_blob=2, scale=3):
 #     h, w = image.shape

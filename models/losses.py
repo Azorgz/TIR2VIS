@@ -2,6 +2,7 @@ import math
 
 import numpy as np
 import torch
+from skimage import measure
 from torch import nn
 from pytorch_msssim import SSIM
 import torch.nn.functional as F
@@ -10,7 +11,7 @@ from torchvision.transforms.v2.functional import gaussian_blur
 from ImagesCameras import ImageTensor
 from models.networks import Vgg16, Get_gradmag_gray, RGBuvHistBlock
 from models.utils_fct import get_ROI_top_part_mask, GetFeaMatrixCenter, bhw_to_onehot, ClsMeanPixelValue, \
-    getLightDarkRegionMean, RefineLightMask, split_im, getLightRegionColor
+    getLightDarkRegionMean, RefineLightMask, split_im, getLightRegionColor, create_fake_TLight, create_fake_Light
 
 
 class SSIM_Loss(SSIM):
@@ -311,8 +312,6 @@ def FakeVisNightLoss(Seg_mask, fake_VIS_night, real_vis, gpu_ids=[]):
     "Pedestrian regularization term: Encouraging the mean value of the pedestrian region in the fake IR image "
     "to be close to the mean value of the pedestrian region in the real image. "
 
-    # b, c, h, w = fake_IR.size()
-
     b, c, h, w = fake_VIS_night.size()
     _, seg_h, seg_w = Seg_mask.size()
     GT_mask_resize = F.interpolate(Seg_mask.expand(1, 1, seg_h, seg_w).float(), size=[h, w], mode='nearest')
@@ -323,7 +322,7 @@ def FakeVisNightLoss(Seg_mask, fake_VIS_night, real_vis, gpu_ids=[]):
     if torch.sum(person_mask) > 0:
         person_region_fake = (person_mask.expand_as(fake_img_norm)).mul(fake_img_norm)
         person_region_true = (person_mask.expand_as(real_img_norm)).mul(real_img_norm)
-        person_dis_loss = (torch.relu(torch.abs(person_region_true - person_region_fake) / (person_region_true + 1e-14)).mean())
+        person_dis_loss = cluster_loss(person_region_true, person_region_fake, lambda x, y: (torch.relu((x-y)**2)/(x+1e-14)).mean())
     else:
         person_dis_loss = 0.0
 
@@ -331,7 +330,7 @@ def FakeVisNightLoss(Seg_mask, fake_VIS_night, real_vis, gpu_ids=[]):
     if torch.sum(car_mask) > 0:
         car_region_fake = (car_mask.expand_as(fake_img_norm)).mul(fake_img_norm)
         car_region_true = (car_mask.expand_as(real_img_norm)).mul(real_img_norm)
-        car_dis_loss = (torch.relu(torch.abs(car_region_true - car_region_fake)) / (car_region_true + 1e-4)).mean()
+        car_dis_loss = cluster_loss(car_region_true, car_region_fake, lambda x, y: (torch.relu((x-y)**2)/(x+1e-14)).mean())
     else:
         car_dis_loss = 0.0
 
@@ -676,82 +675,34 @@ def BiasCorrLossV2(Seg_mask, fake_Night, real_vis, rec_vis, real_vis_edgemap, gp
         .299 * real_img_norm[:, 0:1, :, :] + .587 * real_img_norm[:, 1:2, :, :] + .114 * real_img_norm[:, 2:3, :, :])
 
     ###########Artifact bias correction loss
-    ####Street light luminance adjustment loss
-    "Excluding the noise at the periphery and the street light area less than 25."
-    max_pool_k5 = nn.MaxPool2d(kernel_size=5, stride=1, padding=1)
-    SLight_mask = torch.squeeze(-max_pool_k5(- SLight_mask_ori.expand(1, 1, h, w)))
-
-    if torch.sum(SLight_mask) > 25:
-        real_vis_SLight_region = SLight_mask_ori.mul(real_vis_gray)
-        real_vis_SLight_max_pos = torch.argmax(real_vis_SLight_region)
-        light_radius = torch.sqrt(torch.where(real_vis_SLight_region > real_vis_SLight_region.max() * 0.9, 1, 0).sum() * torch.pi + 1e-14)
-        color = get_light_color(real_img_norm, real_vis_SLight_max_pos)
-        fake_RGB_Night = SLight_mask_ori.mul(real_img_norm) * 0.1
-        SLight_fake_region = SLight_mask_ori.mul(fake_img_norm)
-        SLight_high_mask = torch.where(real_vis_SLight_region > real_vis_SLight_mean, 1., 0.)
-        fake_VIS_SLight_region_high = SLight_high_mask.mul(fake_VIS_gray) + (1. - SLight_high_mask)
-
-        if torch.sum(veg_mask) > 0:
-            fake_VIS_veg_region = veg_mask.mul(fake_VIS_gray)
-            fake_VIS_veg_mean = torch.sum(fake_VIS_veg_region) / torch.sum(veg_mask)
-            "Avoid the maximum value of the brightness of the vegetation area is too high."
-            SLight_loss = F.relu(fake_IR_veg_mean.detach() + 0.25 - torch.min(fake_IR_SLight_region_high))
-        else:
-            SLight_loss = F.relu(0.7 - torch.min(fake_IR_SLight_region_high))
-    else:
-        SLight_loss = 0.0
-
-    ########Light region SGA loss
-    light_mask_all = light_mask_ori + SLight_mask_ori
-    if torch.sum(light_mask_all) > 100:
-        real_vis_EM = torch.squeeze(real_vis_edgemap)
-        gradmag_com = Get_gradmag_gray()
-        fake_IR_GM = torch.squeeze(gradmag_com(fake_IR))
-
-        EM_masked = light_mask_all.mul(real_vis_EM)
-        GM_masked = light_mask_all.mul(fake_IR_GM)
-
-        sum_edge_pixels = torch.sum(EM_masked)
-        if sum_edge_pixels > 0:
-            fake_grad_norm = GM_masked / (torch.max(GM_masked) + 1e-4)
-            loss_sga_light = 0.5 * (torch.sum(F.relu(0.8 * EM_masked - fake_grad_norm))) / sum_edge_pixels
-        else:
-            loss_sga_light = 0.0
-    else:
-        loss_sga_light = 0.0
-    #################
-
     ####Traffic light luminance adjustment loss
-    if torch.sum(light_mask) > 100:
+    max_pool_k5 = nn.MaxPool2d(kernel_size=5, stride=1, padding=2)
+    # Tlight_mask = torch.squeeze(-max_pool_k5(- light_mask.float().expand(1, 1, h, w)))
 
-        real_vis_light_region = light_mask.mul(real_vis_gray)
-        real_vis_light_mean = torch.sum(real_vis_light_region) / torch.sum(light_mask)
-        real_vis_light_region_submean = light_mask.mul(real_vis_light_region - real_vis_light_mean)
-        real_vis_light_region_norm2 = torch.sqrt(torch.sum(real_vis_light_region_submean ** 2))
-        real_vis_light_norm = real_vis_light_region_submean / (real_vis_light_region_norm2 + 1e-4)
-        light_high_mask = torch.where(real_vis_light_region > real_vis_light_mean, torch.ones_like(GT_mask),
-                                      torch.zeros_like(GT_mask))
-
-        high_area_ratio = torch.sum(light_high_mask) / torch.sum(light_mask)
-
-        if high_area_ratio > 0.1:
-            fake_IR_light_region = light_mask.mul(fake_IR_gray)
-            fake_IR_light_mean = torch.sum(fake_IR_light_region) / torch.sum(light_mask)
-            fake_IR_light_region_submean = light_mask.mul(fake_IR_light_region - fake_IR_light_mean)
-            fake_IR_light_region_norm2 = torch.sqrt(torch.sum(fake_IR_light_region_submean ** 2))
-            fake_IR_light_norm = fake_IR_light_region_submean / (fake_IR_light_region_norm2 + 1e-4)
-
-            TLight_loss = F.relu(0.8 - torch.sum(fake_IR_light_norm.mul(real_vis_light_norm.detach())))
-        else:
-            TLight_loss = 0.0
+    if torch.sum(light_mask) > 25:
+        new_GT_color = create_fake_TLight(real_img_norm, light_mask)
+        TLight_fake_region = light_mask_ori.mul(fake_img_norm)
+        TLight_loss = F.relu(TLight_fake_region - new_GT_color).mean()
     else:
         TLight_loss = 0.0
 
-    ABC_losses = TLight_loss + SLight_loss + loss_sga_light
+    if torch.sum(SLight_mask_ori) > 25:
+        new_GT_color = create_fake_Light(real_img_norm, SLight_mask_ori)
+        SLight_fake_region = SLight_mask_ori.mul(fake_img_norm)
+        SLight_loss = F.relu(SLight_fake_region - new_GT_color).mean()
+    else:
+        SLight_loss = 0.0
 
-    ##########Color bias correction loss
+    ## Light regulation
+    mask_error = fake_VIS_gray * (1 - light_mask - SLight_mask_ori) > real_vis_gray * 1.1 * (1 - light_mask - SLight_mask_ori)
+    Overlight_loss = (mask_error*2.).mean()
+
+
+    ABC_losses = TLight_loss + SLight_loss + Overlight_loss
+
+    # ##########Color bias correction loss
     ####Traffic sign reconstruction loss
-    sign_mask = torch.where(GT_mask == 7.0, torch.ones_like(GT_mask), torch.zeros_like(GT_mask))
+    sign_mask = torch.where(GT_mask == 7.0, 1, 0)
     if torch.sum(sign_mask) > 10:
         sign_rec_loss = PixelConsistencyLoss(rec_vis, real_vis, sign_mask, 3)
     else:
@@ -762,8 +713,7 @@ def BiasCorrLossV2(Seg_mask, fake_Night, real_vis, rec_vis, real_vis_edgemap, gp
     else:
         light_rec_loss = 0.0
     ####Motorcycle reconstruction loss
-    motorcycle_mask = torch.zeros_like(GT_mask)
-    motorcycle_mask = torch.where(GT_mask == 17.0, torch.ones_like(GT_mask), torch.zeros_like(GT_mask))
+    motorcycle_mask = torch.where(GT_mask == 17.0, 1, 0)
     if torch.sum(motorcycle_mask) > 10:
         motorcycle_rec_loss = PixelConsistencyLoss(rec_vis, real_vis, motorcycle_mask, 3)
     else:
@@ -774,6 +724,7 @@ def BiasCorrLossV2(Seg_mask, fake_Night, real_vis, rec_vis, real_vis_edgemap, gp
     out_losses = ABC_losses + CBC_losses
 
     return out_losses
+
 
 def PixelConsistencyLoss(inputs_img, GT_img, ROI_mask, ssim_winsize):
     "Pixel-wise Consistency Loss. inputs_img and GT_img are 4D tensors range [-1, 1], while ROI_mask is a 2D tensor."
@@ -1002,6 +953,17 @@ def ColorLoss(image_fake, image_target, GT_seg, chroma_adjust=False):
         loss_color /= chunk**2 * (im_fake.shape[-2]*im_fake.shape[-1])
     return loss_color
 
+
+def cluster_loss(image_target, image_fake, loss):
+    label_connect, num = measure.label((image_target[0] > 0).cpu(), connectivity=2, background=0, return_num=True)
+    tot_loss = 0.
+    for j in range(1, num + 1):
+        "Since background index is 0, the num is num+1."
+        temp_connect_mask = torch.where(torch.from_numpy(label_connect) == j, 1.0, 0.0).to(image_target.device)
+        target_i = image_target * temp_connect_mask.expand_as(image_target)
+        fake_i = image_fake * temp_connect_mask.expand_as(image_fake)
+        tot_loss += loss(target_i,fake_i)
+    return tot_loss
 
 
 
