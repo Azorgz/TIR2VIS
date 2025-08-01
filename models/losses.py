@@ -69,7 +69,7 @@ def TrafLighCorlLoss(real_IR, fake_vis, IR_mask, real_vis, vis_Light_mask, HL_Ma
             vis_bottom_HL_mask = vis_HL_Mask[0, 0, :, :] * vis_Light_bottom_mask
             HL_top_idx = torch.sum(IR_top_HL_mask) * torch.sum(vis_top_HL_mask)
             HL_bottom_idx = torch.sum(IR_bottom_HL_mask) * torch.sum(vis_bottom_HL_mask)
-            if HL_top_idx > 0:  # If the IR img and the vis img are brigther on the top part
+            if HL_top_idx > 0:  # If the IR img and the vis img have top parts in common
                 fake_vis_top_masked = Fake_vis_norm.mul(IR_top_HL_mask.expand_as(Fake_vis_norm))
                 fake_vis_top_HL_Light_mean = torch.sum(fake_vis_top_masked, dim=(1, 2), keepdim=True) / torch.sum(
                     IR_top_HL_mask)

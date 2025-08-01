@@ -1466,7 +1466,7 @@ class Plexer(nn.Module):
             filename = path + f'{i}.pth'
             if isfile(filename):
                 dic = torch.load(filename)
-                # dic = {k: v for k, v in dic.items() if not '_sep' in k}
+                # dic = {k: (v if 'conf_block.0.weight' not in k else v[:, :4]) for k, v in dic.items()}
                 net.load_state_dict(dic)
 
 
