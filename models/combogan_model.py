@@ -1680,68 +1680,88 @@ class GanColorCombo(ComboGANModel):
             FakeIR_FG_Mask, out_FG_FakeIR, out_FG_RealVis, FakeIR_FG_Mask_flip, out_FG_FakeIR_flip, out_FG_RealVis_flip, FakeIR_FG_Mask_ori, HL_Mask, ComIR_Light_Mask = \
                 self.get_FG_MergeMask(self.SegMask_A.detach(), fake_A_Mask, self.real_A, self.fake_B.detach(),
                                       self.gpu_ids[0])
-            self.IR_com = self.get_IR_Com(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, out_FG_FakeIR, out_FG_FakeIR_flip,
-                                          self.real_B.detach(), real_B_Mask, HL_Mask)
-            ##########
-            encoded_IR_com = self.netG.encode(self.IR_com, self.DB)
-            self.fake_A_IR_com = self.netG.decode(encoded_IR_com, self.DA)
-            if torch.sum(FakeIR_FG_Mask) > 0.0:
-                loss_ACL_B = self.criterionPixCon(self.fake_A_IR_com, out_FG_RealVis, FakeIR_FG_Mask,
-                                                  self.opt.ssim_winsize)
-            else:
-                loss_ACL_B = 0.0
+            if FakeIR_FG_Mask.sum() + FakeIR_FG_Mask_flip.sum() > 0:
+                FakeNVIS_FG_Mask, out_FG_FakeNVIS, _, FakeNVIS_FG_Mask_flip, out_FG_FakeNVIS_flip, _, FakeNVIS_FG_Mask_ori, HL_Mask, ComNVIS_Light_Mask = \
+                    self.get_FG_MergeMask(self.SegMask_A.detach(), fake_A_Mask, self.real_A, self.fake_C_A.detach(),
+                                          self.gpu_ids[0])
+                self.IR_com = self.get_IR_Com(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, out_FG_FakeIR, out_FG_FakeIR_flip,
+                                              self.real_B.detach(), real_B_Mask, HL_Mask)
+                self.NVIS_com = self.get_IR_Com(FakeNVIS_FG_Mask, FakeNVIS_FG_Mask_flip, out_FG_FakeNVIS, out_FG_FakeNVIS_flip,
+                                              self.real_C.detach(), real_B_Mask, HL_Mask)
+                ##########
+                encoded_IR_com = self.netG.encode(self.IR_com, self.DB)
+                self.fake_A_IR_com = self.netG.decode(encoded_IR_com, self.DA)
+                encoded_NVIS_com = self.netG.encode(self.NVIS_com, self.DC)
+                self.fake_A_NVIS_com = self.netG.decode(encoded_NVIS_com, self.DA)
 
-            if torch.sum(FakeIR_FG_Mask_flip) > 0.0:
-                loss_ACL_B_flip = self.criterionPixCon(self.fake_A_IR_com, out_FG_RealVis_flip, FakeIR_FG_Mask_flip,
-                                                       self.opt.ssim_winsize)
+                if torch.sum(FakeIR_FG_Mask) > 0.0:
+                    loss_ACL_B = (self.criterionPixCon(self.fake_A_IR_com, out_FG_RealVis, FakeIR_FG_Mask,
+                                                      self.opt.ssim_winsize) +
+                                  self.criterionPixCon(self.fake_A_NVIS_com, out_FG_RealVis, FakeNVIS_FG_Mask,
+                                                      self.opt.ssim_winsize))
+
+                else:
+                    loss_ACL_B = 0.0
+
+                if torch.sum(FakeIR_FG_Mask_flip) > 0.0:
+                    loss_ACL_B_flip = (self.criterionPixCon(self.fake_A_IR_com, out_FG_RealVis_flip, FakeIR_FG_Mask_flip,
+                                                           self.opt.ssim_winsize) +
+                                       self.criterionPixCon(self.fake_A_NVIS_com, out_FG_RealVis_flip, FakeNVIS_FG_Mask_flip,
+                                                           self.opt.ssim_winsize))
+                else:
+                    loss_ACL_B_flip = 0.0
+                Com_RealVis = out_FG_RealVis + out_FG_RealVis_flip
+                loss_CGR_masked = (self.criterionComIR(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, real_B_Mask,
+                                                      self.IR_com, self.fake_A_IR_com, self.gpu_ids[0]) +
+                                   self.criterionComIR(FakeNVIS_FG_Mask, FakeNVIS_FG_Mask_flip, real_B_Mask,
+                                                      self.NVIS_com, self.fake_A_NVIS_com, self.gpu_ids[0]))
             else:
-                loss_ACL_B_flip = 0.0
-            Com_RealVis = out_FG_RealVis + out_FG_RealVis_flip
+                self.IR_com = self.NVIS_com = None
+                self.fake_A_IR_com = self.fake_A_NVIS_com = None
+                Com_RealVis = torch.zeros_like(out_FG_RealVis)
+                loss_ACL_B_flip = loss_ACL_B = loss_CGR_masked = 0.0
+
             ###Traffic Light Luminance Loss
-            loss_tll = self.criterionTLL(self.fake_A, real_B_Mask, self.real_B.detach(),
-                                         self.gpu_ids[0])
+            loss_tll = self.criterionTLL(self.fake_A_BC, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
             ####Traffic light color loss
-            loss_TLight_color = self.criterionTLC(self.real_B, self.fake_A, real_B_Mask,
+            loss_TLight_color = self.criterionTLC(self.real_B, self.fake_A_BC, real_B_Mask,
                                                   Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
             loss_TLight_appe = loss_tll + loss_TLight_color
             ####Appearance consistency loss of domain B
-            self.loss_AC[self.DB] = loss_ACL_B + loss_ACL_B_flip + self.criterionComIR(FakeIR_FG_Mask,
-                                                                                       FakeIR_FG_Mask_flip,
-                                                                                       real_B_Mask,
-                                                                                       self.IR_com, self.fake_A_IR_com,
-                                                                                       self.gpu_ids[0])
+            self.loss_AC[self.DB] = loss_ACL_B + loss_ACL_B_flip + loss_CGR_masked
             ########################
 
             ##########Fake_Vis_Composition, OAMix-Vis
             FakeVis_FG_Mask, FakeVis_FG_Mask_flip, _ = self.get_FG_MergeMaskVis(fake_A_Mask, self.SegMask_A.detach(),
                                                                                 self.gpu_ids[0])
-            self.Vis_com = (torch.ones_like(FakeVis_FG_Mask) - FakeVis_FG_Mask - FakeVis_FG_Mask_flip).mul(
-                self.real_A) + \
-                           FakeVis_FG_Mask.mul(self.fake_A) + FakeVis_FG_Mask_flip.mul(
-                torch.flip(self.fake_A.detach(), dims=[3]))
+            self.Vis_com = ((1 - FakeVis_FG_Mask - FakeVis_FG_Mask_flip).mul(self.real_A) +
+                            FakeVis_FG_Mask.mul(self.fake_A) +
+                            FakeVis_FG_Mask_flip.mul(torch.flip(self.fake_A.detach(), dims=[3])))\
+                if FakeVis_FG_Mask.sum()+FakeVis_FG_Mask_flip.sum() > 0 else None
             ###########
+            if self.Vis_com is not None:
+                encoded_Vis_com = self.netG.encode(self.Vis_com, self.DA)
+                self.fake_B_Vis_com = self.netG.decode(encoded_Vis_com, self.DB)
+                if torch.sum(FakeVis_FG_Mask) > 0.0:
+                    loss_ACL_A = self.criterionPixCon(self.fake_B_Vis_com, self.real_B, FakeVis_FG_Mask,
+                                                      self.opt.ssim_winsize)
+                else:
+                    loss_ACL_A = 0.0
 
-            encoded_Vis_com = self.netG.encode(self.Vis_com, self.DA)
-            self.fake_B_Vis_com = self.netG.decode(encoded_Vis_com, self.DB)
-
-            if torch.sum(FakeVis_FG_Mask) > 0.0:
-                loss_ACL_A = self.criterionPixCon(self.fake_B_Vis_com, self.real_B, FakeVis_FG_Mask,
-                                                  self.opt.ssim_winsize)
+                if torch.sum(FakeVis_FG_Mask_flip) > 0.0:
+                    loss_ACL_A_flip = self.criterionPixCon(self.fake_B_Vis_com, torch.flip(self.real_B, dims=[3]),
+                                                           FakeVis_FG_Mask_flip, self.opt.ssim_winsize)
+                else:
+                    loss_ACL_A_flip = 0.0
+                self.loss_AC[self.DA] = loss_ACL_A + loss_ACL_A_flip
             else:
-                loss_ACL_A = 0.0
-
-            if torch.sum(FakeVis_FG_Mask_flip) > 0.0:
-                loss_ACL_A_flip = self.criterionPixCon(self.fake_B_Vis_com, torch.flip(self.real_B, dims=[3]),
-                                                       FakeVis_FG_Mask_flip, self.opt.ssim_winsize)
-            else:
-                loss_ACL_A_flip = 0.0
+                self.loss_AC[self.DA] = 0.0
             ####Appearance consistency loss of domain A
-            self.loss_AC[self.DA] = loss_ACL_A + loss_ACL_A_flip
         else:
-            self.IR_com = torch.ones_like(self.real_B)
-            self.Vis_com = torch.ones_like(self.real_B)
-            self.fake_B_Vis_com = torch.ones_like(self.real_B)
-            self.fake_A_IR_com = torch.ones_like(self.real_B)
+            self.IR_com = None
+            self.Vis_com = None
+            self.fake_B_Vis_com = None
+            self.fake_A_IR_com = None
             loss_TLight_appe = 0.0
             ##############################
 

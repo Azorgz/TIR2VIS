@@ -62,16 +62,14 @@ def TrafLighCorlLoss(real_IR, fake_vis, IR_mask, real_vis, vis_Light_mask, HL_Ma
                                                                                                :])
             IR_gray_light = Real_IR_gray * IR_Light_mask
             IR_gray_light_mean = torch.sum(IR_gray_light) / torch.sum(IR_Light_mask)
-            IR_HL_mask = torch.zeros_like(IR_seg_mask_2D)
-            IR_HL_mask = torch.where(IR_gray_light > IR_gray_light_mean, torch.ones_like(IR_seg_mask_2D),
-                                     torch.zeros_like(IR_seg_mask_2D))
+            IR_HL_mask = torch.where(IR_gray_light > IR_gray_light_mean, 1., 0.)
             IR_top_HL_mask = IR_HL_mask * IR_Light_top_mask
             IR_bottom_HL_mask = IR_HL_mask * IR_Light_bottom_mask
             vis_top_HL_mask = vis_HL_Mask[0, 0, :, :] * vis_Light_top_mask
             vis_bottom_HL_mask = vis_HL_Mask[0, 0, :, :] * vis_Light_bottom_mask
             HL_top_idx = torch.sum(IR_top_HL_mask) * torch.sum(vis_top_HL_mask)
             HL_bottom_idx = torch.sum(IR_bottom_HL_mask) * torch.sum(vis_bottom_HL_mask)
-            if HL_top_idx > 0:
+            if HL_top_idx > 0:  # If the IR img and the vis img are brigther on the top part
                 fake_vis_top_masked = Fake_vis_norm.mul(IR_top_HL_mask.expand_as(Fake_vis_norm))
                 fake_vis_top_HL_Light_mean = torch.sum(fake_vis_top_masked, dim=(1, 2), keepdim=True) / torch.sum(
                     IR_top_HL_mask)
@@ -516,8 +514,8 @@ def ComIRCGRLoss(FG_mask, FG_mask_flip, ori_Seg_GT, real_IR, fake_vis, gpu_ids):
 
     FG_mask_fused_4d = FG_mask + FG_mask_flip
     FG_mask_fused = FG_mask_fused_4d[0, 0, :, :]
-    IR_bkg_mask = torch.where(seg_mask_fake < 11.0, torch.ones_like(seg_mask_fake), torch.zeros_like(seg_mask_fake))
-    IR_UC_mask = torch.where(seg_mask_fake == 255.0, torch.ones_like(seg_mask_fake), torch.zeros_like(seg_mask_fake))
+    IR_bkg_mask = torch.where(seg_mask_fake < 11.0, 1., 0.)
+    IR_UC_mask = torch.where(seg_mask_fake == 255.0, 1., 0.)
     IR_bkg_ori_mask = IR_bkg_mask + IR_UC_mask
     ComIR_bkg_mask = IR_bkg_ori_mask - FG_mask_fused.mul(IR_bkg_ori_mask)
     losses = MaskedCGRLoss(ComIR_bkg_mask, real_IR, fake_vis, gpu_ids)

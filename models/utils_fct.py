@@ -1346,10 +1346,10 @@ def IRComPreProcessv6(FG_mask, FG_mask_flip, Fake_IR_masked_ori, Fake_IR_masked_
 
     if torch.sum(HL_Mask) > 0:
         FG_mask_sub_HL = FG_mask - HL_Mask
-        FG_LL_mask = torch.where(FG_mask_sub_HL > 0.0, torch.ones_like(FG_mask), torch.zeros_like(FG_mask))
+        FG_LL_mask = torch.where(FG_mask_sub_HL > 0.0, 1., 0.)
 
         FG_mask_sub_HL_flip = FG_mask_flip - HL_Mask
-        FG_LL_mask_flip = torch.where(FG_mask_sub_HL_flip > 0.0, torch.ones_like(FG_mask), torch.zeros_like(FG_mask))
+        FG_LL_mask_flip = torch.where(FG_mask_sub_HL_flip > 0.0, 1., 0.)
     else:
         FG_LL_mask = FG_mask
         FG_LL_mask_flip = FG_mask_flip
