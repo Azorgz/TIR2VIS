@@ -107,7 +107,7 @@ class TrainOptions(BaseOptions):
                                  help='weight for latent-space loss (A -> z -> B -> z)')
         self.parser.add_argument('--lambda_forward', type=float, default=0.2,
                                  help='weight for forward loss (A -> B; try 0.2)')
-        self.parser.add_argument('--lambda_ssim', type=float, default=2.0, help='weight for SSIM loss')
+        self.parser.add_argument('--lambda_ssim', type=float, default=2.5, help='weight for SSIM loss')
         self.parser.add_argument('--lambda_tv', type=float, default=5.0, help='weight for TV loss')  # 5.
         self.parser.add_argument('--lambda_sc', type=float, default=1.0, help='weight for SC loss')
         self.parser.add_argument('--lambda_vgg', type=float, default=1.0, help='weight for VGG loss')

@@ -11,6 +11,7 @@ from torchmetrics.image import StructuralSimilarityIndexMeasure
 from torchvision import models
 
 from ImagesCameras import ImageTensor
+from ImagesCameras.Metrics import SSIM
 from models.utils_fct import get_norm_layer, weights_init, power_iteration
 from thirdParty.CrossModalFlow.flow_utils import backwarp_tensor
 from thirdParty.CrossModalFlow.run_model import run_tensor
@@ -833,7 +834,7 @@ class ResnetBlock(nn.Module):
 
 
 class ResnetBlock2(nn.Module):
-    def __init__(self, dim, norm_layer, use_dropout, use_bias, padding_type='reflect', n_domains=0, act=None, p_color=None):
+    def __init__(self, dim, norm_layer, use_dropout, use_bias, padding_type='reflect', n_domains=0, act=None, p_color=None, compute_flow=False):
         super(ResnetBlock2, self).__init__()
         act = act if act is not None else nn.PReLU()
         self.act = act
@@ -877,14 +878,20 @@ class ResnetBlock2(nn.Module):
                                         nn.Sigmoid())
         self.flow = None
         self.pedestrian_color = p_color if p_color is not None else 0.
+        self.compute_flow = compute_flow
+        self.ssim = SSIM(torch.device('cuda'))
 
     def forward(self, inp, *args):
         if args:
             mask, image_ir, image_rgb = args
             if image_ir is not None:
-                self.flow = self.flow_estimator(image_ir, image_rgb)
-                rec_rgb = self.wrapper(image_rgb, self.flow).detach()
-                self.flow = F.interpolate(self.flow, inp[0].shape[-2:]).detach()
+                conf = SSIM()
+                if self.compute_flow:
+                    self.flow = self.flow_estimator(image_ir, image_rgb)
+                    rec_rgb = self.wrapper(image_rgb, self.flow).detach()
+                    self.flow = F.interpolate(self.flow, inp[0].shape[-2:]).detach()
+                else:
+                    rec_rgb = None
             else:
                 rec_rgb = None
         else:
@@ -894,11 +901,12 @@ class ResnetBlock2(nn.Module):
             b, c, h, w = x.shape
             y = y if self.flow is None else self.wrapper(y, self.flow)
             y_ = self.conv_block(y)
-            # p_color_layer = torch.ones([b, 3, h, w]) * self.pedestrian_color
-            xy_ = torch.cat([x, y_], dim=1)
+            p_color_layer = self.pedestrian_color[None, :, None, None].expand([b, c, h, w]).to(x.device)
+            xy_ = torch.cat([x, y_, p_color_layer], dim=1)
             res = self.fus_conv(xy_.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+            res = self.final_block(res)
             conf = self.filter(self.conf_block(xy_).squeeze(), mask) if mask is not None else self.conf_block(xy_).squeeze()
-            res = x + (conf + 0.1) * self.final_block(res) * 2
+            res = x + (conf + 0.1) * res
             # x_min, x_max = x.min(), x.max()
             # x_ = x + x_
             # x = (x_ - x_.min()) / (x_.max() - x_.min() + 1e-14)
@@ -1663,7 +1671,7 @@ class SequentialContext(nn.Sequential):
         if self.context_var is None or self.context_var.size()[-2:] != input.size()[-2:]:
             tensor = torch.cuda.FloatTensor if isinstance(input.data, torch.cuda.FloatTensor) \
                 else torch.FloatTensor
-            self.context_var = tensor(*((1, self.n_classes) + input.size()[-2:]))
+            self.context_var = tensor(*(1, self.n_classes,  input.shape[-2:]))
 
         self.context_var.data.fill_(-1.0)
         self.context_var.data[:, domain, :, :] = 1.0
