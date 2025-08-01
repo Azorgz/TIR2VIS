@@ -317,20 +317,17 @@ def FakeVisNightLoss(Seg_mask, fake_VIS_night, real_vis, gpu_ids=[]):
     GT_mask_resize = F.interpolate(Seg_mask.expand(1, 1, seg_h, seg_w).float(), size=[h, w], mode='nearest')
     real_img_norm = (real_vis + 1.0) * 0.5
     fake_img_norm = (fake_VIS_night + 1.0) * 0.5
-
+    real_img_gray = .299 * real_img_norm[:, 0:1, :, :] + .587 * real_img_norm[:, 1:2, :, :] + .114 * real_img_norm[:,
+                                                                                                    2:3, :, :]
     person_mask = torch.where(GT_mask_resize == 11, 1., 0.)
     if torch.sum(person_mask) > 0:
-        person_region_fake = (person_mask.expand_as(fake_img_norm)).mul(fake_img_norm)
-        person_region_true = (person_mask.expand_as(real_img_norm)).mul(real_img_norm)
-        person_dis_loss = cluster_loss(person_region_true, person_region_fake, lambda x, y: (torch.relu((x-y)**2)/(x+1e-14)).mean())
+        person_dis_loss = cluster_loss(real_img_norm, fake_img_norm, person_mask, lambda x, y, m: (torch.relu((x-y)**2)/(x+1e-14) * m).mean())
     else:
         person_dis_loss = 0.0
 
     car_mask = torch.where((16 > GT_mask_resize) * (GT_mask_resize > 12), 1., 0.)
     if torch.sum(car_mask) > 0:
-        car_region_fake = (car_mask.expand_as(fake_img_norm)).mul(fake_img_norm)
-        car_region_true = (car_mask.expand_as(real_img_norm)).mul(real_img_norm)
-        car_dis_loss = cluster_loss(car_region_true, car_region_fake, lambda x, y: (torch.relu((x-y)**2)/(x+1e-14)).mean())
+        car_dis_loss = cluster_loss(real_img_norm, fake_img_norm, car_mask, lambda x, y, m: (torch.relu((x-y)**2)/(x+1e-14) * m).mean())
     else:
         car_dis_loss = 0.0
 
@@ -338,24 +335,25 @@ def FakeVisNightLoss(Seg_mask, fake_VIS_night, real_vis, gpu_ids=[]):
     if torch.sum(road_mask) > 0:
         road_region_fake = (road_mask.expand_as(fake_img_norm)).mul(fake_img_norm)
         road_region_true = (road_mask.expand_as(real_img_norm)).mul(real_img_norm)
-        road_region_true_col_mean = road_region_true.mean(dim=-1).mean(dim=-1)
-        road_region_fake_col_mean = road_region_fake.mean(dim=-1).mean(dim=-1)
+        road_region_true_col_mean = road_region_true.mean()
+        road_region_true = road_region_true*(real_img_gray > road_region_true_col_mean).expand_as(road_region_true)
+        road_region_fake = road_region_fake*(real_img_gray > road_region_true_col_mean).expand_as(road_region_true)
+        road_region_true_col_mean = road_region_true.mean()
+        road_region_fake_col_mean = road_region_fake.mean()
         # road_region_true_gray = (road_mask.expand_as(real_vis_gray)).mul(real_vis_gray)
         # road_region_true_mean = road_region_true_gray.sum() / road_mask.sum()
         # mask = road_region_true.mean(dim=1) > road_region_true_mean
         # road_region_true_ = torch.where(mask, road_region_true, 0)
         # road_region_fake_ = torch.where(mask, road_region_fake, 0)
-        road_paint_dis_loss = (torch.relu(torch.abs(road_region_true - road_region_fake)) / (road_region_true + 1e-14)).mean()
-        road_paint_dis_loss += (torch.relu((road_region_true_col_mean - road_region_fake_col_mean)**2)).mean()
+        road_paint_dis_loss = ((road_region_true - road_region_fake)**2).mean()
+        road_paint_dis_loss += ((road_region_true_col_mean - road_region_fake_col_mean)**2).mean()
 
     else:
         road_paint_dis_loss = 0.0
 
     sign_mask = torch.where(7 == GT_mask_resize, 1., 0.)
     if torch.sum(sign_mask) > 0:
-        sign_region_fake = (sign_mask.expand_as(fake_img_norm)).mul(fake_img_norm)
-        sign_region_true = (sign_mask.expand_as(real_img_norm)).mul(real_img_norm)
-        sign_dis_loss = (torch.relu(torch.abs(sign_region_true - sign_region_fake)) / (sign_region_true + 1e-14)).mean()
+        sign_dis_loss = cluster_loss(real_img_norm, fake_img_norm, sign_mask, lambda x, y, m: (torch.relu((x-y)**2)/(x+1e-14) * m).mean())
     else:
         sign_dis_loss = 0.0
 
@@ -954,15 +952,15 @@ def ColorLoss(image_fake, image_target, GT_seg, chroma_adjust=False):
     return loss_color
 
 
-def cluster_loss(image_target, image_fake, loss):
-    label_connect, num = measure.label((image_target[0] > 0).cpu(), connectivity=2, background=0, return_num=True)
+def cluster_loss(image_target, image_fake, mask, loss):
+    label_connect, num = measure.label((mask[0] > 0).cpu(), connectivity=2, background=0, return_num=True)
     tot_loss = 0.
     for j in range(1, num + 1):
         "Since background index is 0, the num is num+1."
         temp_connect_mask = torch.where(torch.from_numpy(label_connect) == j, 1.0, 0.0).to(image_target.device)
         target_i = image_target * temp_connect_mask.expand_as(image_target)
         fake_i = image_fake * temp_connect_mask.expand_as(image_fake)
-        tot_loss += loss(target_i,fake_i)
+        tot_loss += loss(target_i, fake_i, temp_connect_mask)
     return tot_loss
 
 

@@ -850,7 +850,7 @@ class GanColorCombo(ComboGANModel):
         self.loss_saturation = torch.Tensor([0.]).to('cuda')
         self.lambda_color = torch.Tensor([opt.lambda_color]).to('cuda')
         self.criterionColor = ColorLoss
-        self.criterionSaturation = lambda x: torch.mean(((x * 0.5 + 0.5).mean(dim=1) > 0.9) * 1.)
+        self.criterionSaturation = lambda x: torch.mean(((x * 0.5 + 0.5).mean(dim=1) > 0.95) * 1.)
         self.simple_train_channel = 0, 1
         self.set_partial_train()
         self.rec_A, self.rec_B, self.rec_C, self.rec_BC = None, None, None, None
@@ -1465,8 +1465,8 @@ class GanColorCombo(ComboGANModel):
             self.rec_B_A_BC = self.netG.decode(rec_encoded_BC, self.DB)
             # self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A_BC * self.mask, self.rec_real_C * self.mask) \
             #     if self.cond('DC', 'EC', 'EA', 'DA') else self.null
-            self.loss_cycle[self.DC] += loss_cycle(self.rec_B_A_BC, self.real_B) \
-                if self.cond('EC', 'DB', 'EA', 'DA') else self.null
+            # self.loss_cycle[self.DC] += loss_cycle(self.rec_B_A_BC, self.real_B) \
+            #     if self.cond('EC', 'DB', 'EA', 'DA') else self.null
             # rec_encoded_BC = self.netG.encode(self.fake_BC, self.DC)
             # self.rec_B_BC = self.netG.decode(rec_encoded_BC, self.DB)
             # self.rec_C_BC = self.netG.decode(rec_encoded_BC, self.DC)
@@ -1490,7 +1490,7 @@ class GanColorCombo(ComboGANModel):
         #     if self.cond('EC', 'DC', 'EB', 'DB') else self.null
 
         self.loss_saturation = self.null
-        self.loss_saturation += self.criterionSaturation(self.fake_C_A)
+        self.loss_saturation += self.criterionSaturation(self.fake_C_A) * 10
 
         self.loss_tv = {self.DA: 0., self.DB: 0., self.DC: 0., self.Fus: 0.}
         # Optional total variation loss on generate fake images, added by lfy
@@ -1520,8 +1520,7 @@ class GanColorCombo(ComboGANModel):
         real_A_s = F.interpolate(self.real_A, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
         fake_B_s = F.interpolate(self.fake_B, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
         fake_A_s = F.interpolate(self.fake_A, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
-        real_B_s = F.interpolate(self.real_B, size=[rand_size_B, rand_size_B], mode='bilinear',
-                                 align_corners=False)
+        real_B_s = F.interpolate(self.real_B, size=[rand_size_B, rand_size_B], mode='bilinear', align_corners=False)
         self.loss_S_rec = {self.DA: 0., self.DB: 0., self.DC: 0.}
         self.loss_S_enc = {self.DA: 0., self.DB: 0., self.DC: 0.}
         # if self.lambda_acl > 0.0:
@@ -1552,8 +1551,8 @@ class GanColorCombo(ComboGANModel):
                     fake_C_A_pred, _ = self.netS.forward(fake_C_A_s, self.DC)
 
                     if self.epoch >= 75:  # epoch 75-100
-                        fake_A_BC_s = F.interpolate(self.fake_A_BC, size=[rand_size, rand_size], mode='bilinear',
-                                                    align_corners=False)
+                        # fake_A_BC_s = F.interpolate(self.fake_A_BC, size=[rand_size, rand_size], mode='bilinear',
+                        #                             align_corners=False)
                         fake_A_BC_pred, _ = self.netS.forward(fake_A_BC_s, self.DA)
 
         self.loss_S_rec = {self.DA: 0.0, self.DB: 0.0, self.DC: 0.0}
@@ -1634,14 +1633,14 @@ class GanColorCombo(ComboGANModel):
             inv_idx = torch.rand(1)
             if inv_idx > 0.5:
                 fake_A_BC_ds = F.interpolate(self.fake_A_BC, size=[128, 128], mode='bilinear', align_corners=False)
-                encoded_A_BC_ds = self.netG.encode(fake_A_BC_ds, self.DC)
+                encoded_A_BC_ds = self.netG.encode(fake_A_BC_ds, self.DA)
                 rec_C_ds = self.netG.decode(encoded_A_BC_ds, self.DC)
                 rec_B_ds = self.netG.decode(encoded_A_BC_ds, self.DB)
                 real_C_ds = F.interpolate(self.rec_C_A_BC, size=[128, 128], mode='bilinear', align_corners=False)
                 real_B_ds = F.interpolate(self.rec_B_A_BC, size=[128, 128], mode='bilinear', align_corners=False)
             else:
                 fake_A_BC_ds = F.interpolate(self.fake_A_BC, size=[384, 384], mode='bilinear', align_corners=False)
-                encoded_A_BC_ds = self.netG.encode(fake_A_BC_ds, self.DC)
+                encoded_A_BC_ds = self.netG.encode(fake_A_BC_ds, self.DA)
                 rec_C_ds = F.interpolate(self.netG.decode(encoded_A_BC_ds, self.DC), size=[256, 256],
                                          mode='bilinear', align_corners=False)
                 rec_B_ds = F.interpolate(self.netG.decode(encoded_A_BC_ds, self.DB), size=[256, 256],
@@ -1665,7 +1664,7 @@ class GanColorCombo(ComboGANModel):
             #     if self.cond('EC', 'DA', 'EA', 'DC') else self.null
             # self.loss_color += self.criterionColor(self.rec_A_BC, self.real_A, None) * self.lambda_color \
             #     if self.cond('EC', 'DA', 'EA', 'DC') else self.null
-        if self.epoch > 40:
+        if self.epoch > 30:
             self.loss_color += self.criterionColor(self.fake_A_C, self.real_C, self.SegMask_B_update, chroma_adjust=True) * self.lambda_color \
                 if self.cond('EC', 'DA') else self.null
             self.loss_color += self.criterionColor(self.fake_A_BC, self.rec_real_C.detach(),
@@ -1825,8 +1824,9 @@ class GanColorCombo(ComboGANModel):
                                    self.gpu_ids[0])) if self.cond('EC', 'Fus', 'DA', 'EB') else self.null
 
         if self.epoch > 30:
-            self.loss_sga[self.DC] += self.lambda_ssim * self.criterionVISClsDis(self.SegMask_B_update[0].detach(), self.fake_A_BC,
-                                                                              self.real_C.detach(), self.gpu_ids[0])
+            self.loss_sga[self.DC] += (self.lambda_ssim *
+                                       self.criterionVISClsDis(self.SegMask_B_update[0].detach(), self.fake_A_BC,
+                                                               self.real_C.detach(), self.gpu_ids[0]))
 
 
 
