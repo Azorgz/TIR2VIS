@@ -918,10 +918,10 @@ class ResnetBlock2(nn.Module):
             res = self.fus_conv(xy_.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
             res = torch.cat([res, y_], dim=0).max(dim=0, keepdim=True)[0].squeeze()
             res = self.final_block(res)
-            # conf = self.filter(ssim_mask.squeeze(), mask) \
-            #     if mask is not None else self.conf_block(rec_rgb)
+            conf = self.filter(ssim_mask.squeeze(), mask) \
+                 if mask is not None else self.conf_block(rec_rgb)
             # mask_f = self.filter(ssim_mask.squeeze() + conf, mask)
-            return x + res, rec_rgb
+            return x*conf + res*(1-conf), rec_rgb
         return inp + self.conv_block(inp), rec_rgb
 
     def filter(self, feat, mask):

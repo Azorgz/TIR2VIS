@@ -1630,7 +1630,7 @@ class GanColorCombo(ComboGANModel):
 
         # Optional Scale Robustness Loss on generated fake images, added by lfy
         self.loss_SR = {self.DC: 0.0}
-        if self.DB_GT_update_idx > 100.0:
+        if self.DB_GT_update_idx > 0.0:
             inv_idx = torch.rand(1)
             if inv_idx > 0.5:
                 fake_A_BC_ds = F.interpolate(self.fake_A_BC, size=[128, 128], mode='bilinear', align_corners=False)
@@ -1729,8 +1729,11 @@ class GanColorCombo(ComboGANModel):
 
             ###Traffic Light Luminance Loss
             loss_tll = self.criterionTLL(self.fake_A_BC, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
+            loss_tll += self.criterionTLL(self.fake_A, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
             ####Traffic light color loss
             loss_TLight_color = self.criterionTLC(self.real_B, self.fake_A_BC, real_B_Mask,
+                                                  Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
+            loss_TLight_color += self.criterionTLC(self.real_B, self.fake_A, real_B_Mask,
                                                   Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
             loss_TLight_appe = loss_tll + loss_TLight_color
             ####Appearance consistency loss of domain B
