@@ -1498,8 +1498,7 @@ class GanColorCombo(ComboGANModel):
         # Optional total variation loss on generate fake images, added by lfy
         self.loss_tv[self.DA] += self.lambda_tv * self.criterionTV(self.fake_A) if self.cond('EB', 'DA') else self.null
         self.loss_tv[self.DB] += self.lambda_tv * self.criterionTV(self.fake_B) if self.cond('EA', 'DB') else self.null
-        self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_C_A) if self.cond('EA',
-                                                                                               'DC') else self.null
+        self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_C_A) if self.cond('EA', 'DC') else self.null
         # self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_A_C) if self.cond('EC', 'DA') else self.null
         # self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_B_C) if self.cond('EC',
         #                                                                                        'DB') else self.null
@@ -1601,8 +1600,8 @@ class GanColorCombo(ComboGANModel):
                             0.5 * self.criterionSemEdge(real_A_pred, self.SegMask_A_update.long(), 19,
                                                         self.gpu_ids[0]))
 
-                self.loss_S_rec[self.DA] += self.lambda_sc * seg_loss_A(fake_B_pred, self.SegMask_A_update.long())
-                self.loss_S_rec[self.DA] += self.lambda_sc * seg_loss_A(fake_C_A_pred, self.SegMask_A_update.long())
+                self.loss_S_rec[self.DB] += self.lambda_sc * seg_loss_A(fake_B_pred, self.SegMask_A_update.long())
+                self.loss_S_rec[self.DC] += self.lambda_sc * seg_loss_A(fake_C_A_pred, self.SegMask_A_update.long())
                 self.SegMask_B_update = self.UpdateIRGTv2(real_B_pred.detach(), fake_A_BC_pred_d,
                                                           SegMask_B_s[0].long(), real_B_s, self.IR_prob_th)
 
@@ -1673,11 +1672,7 @@ class GanColorCombo(ComboGANModel):
             self.loss_color += self.criterionColor(self.fake_A_BC, self.rec_real_C.detach(),
                                                    self.SegMask_B_update) * self.lambda_color \
                 if self.cond('EC', 'DA', 'EB', 'Fus') else self.null
-        if self.epoch <= 40:
-            self.loss_color += self.criterionObjectColor(self.rec_A_BC, self.SegMask_A, 'person', self.pedestrian_color)
-        else:
-            self.loss_color += self.criterionObjectColor(self.fake_A_BC, self.SegMask_B_update, 'person',
-                                                         self.pedestrian_color)
+        self.loss_color += self.criterionObjectColor(self.rec_A_BC, self.SegMask_A, 'person', self.pedestrian_color)
 
             # self.loss_color += self.criterionColor(self.rec_C_A_BC, self.real_C, self.SegMask_B_update) * self.lambda_color
 

@@ -154,19 +154,15 @@ def OnlSemDisModule(seg_tensor1, seg_tensor2, ori_seg_GT, input_IR, prob_th):
 
 
 def UpdateIRSegGTv3(seg_tensor1, seg_tensor2, ori_seg_GT, input_IR, prob_th):
-    "Combining the online semantic distillation module with masks (predicted offline) of object categories to update "
-    "the segmentation pseudo-labels of NTIR images."
-    "ori_seg_GT: 1 * h * w."
+    """Combining the online semantic distillation module with masks (predicted offline) of object categories to update
+    the segmentation pseudo-labels of NTIR images.
+    ori_seg_GT: 1 * h * w."""
 
     sm = torch.nn.Softmax(dim=1)
     pred_sm1 = sm(seg_tensor1.detach())
     pred_sm2 = sm(seg_tensor2.detach())
-    pred_max_tensor1 = torch.max(pred_sm1, dim=1)
-    pred_max_tensor2 = torch.max(pred_sm2, dim=1)
-    pred_max_value1 = pred_max_tensor1[0]
-    pred_max_value2 = pred_max_tensor2[0]
-    pred_max_category1 = pred_max_tensor1[1]
-    pred_max_category2 = pred_max_tensor2[1]
+    pred_max_value1, pred_max_category1 = torch.max(pred_sm1, dim=1)
+    pred_max_value2, pred_max_category2 = torch.max(pred_sm2, dim=1)
 
     mask_category1 = pred_max_category1.float()
     mask_category2 = pred_max_category2.float()
@@ -174,25 +170,18 @@ def UpdateIRSegGTv3(seg_tensor1, seg_tensor2, ori_seg_GT, input_IR, prob_th):
     mask_inter = torch.where(mask_sub == 0.0, 1, 0)
 
     seg_HP_mask1 = torch.where(pred_max_value1 > prob_th, 1, 0)
-    # seg_HP_mask2 = torch.where(pred_max_value2 > prob_th, 1, 0)
-    mask_inter_HP = seg_HP_mask1.mul(seg_HP_mask1)
+    seg_HP_mask2 = torch.where(pred_max_value2 > prob_th, 1, 0)
+    mask_inter_HP = seg_HP_mask1.mul(seg_HP_mask2)
 
     seg_inter_mask_UC_HP = mask_inter_HP.mul(mask_inter)
 
-    mask_new_GT = seg_inter_mask_UC_HP.mul(mask_category1) + (
-            torch.ones_like(seg_inter_mask_UC_HP) - seg_inter_mask_UC_HP) * 255.0
+    mask_new_GT = seg_inter_mask_UC_HP.mul(mask_category1) + (1 - seg_inter_mask_UC_HP) * 255.0
     mask_final = RefineIRMask(torch.squeeze(mask_new_GT), input_IR)
     ###Removal of vegetated areas from supervision
-    mask_Bkg_all = torch.zeros_like(mask_final)
-    mask_Bkg_all = torch.where(mask_final < 11.0, torch.ones_like(mask_Bkg_all), torch.zeros_like(mask_Bkg_all))
-    mask_Build_new = torch.zeros_like(mask_final)
-    mask_Build_new = torch.where(mask_final == 2.0, torch.ones_like(mask_Build_new), torch.zeros_like(mask_Build_new))
-    mask_Sign_new = torch.zeros_like(mask_final)
-    mask_Sign_new = torch.where(mask_final == 6.0, torch.ones_like(mask_Sign_new), torch.zeros_like(mask_Sign_new))
-    mask_Light_new = torch.zeros_like(mask_final)
-    mask_Light_new = torch.where(mask_final == 7.0, torch.ones_like(mask_Light_new), torch.zeros_like(mask_Light_new))
-    mask_Car_new = torch.zeros_like(mask_final)
-    mask_Car_new = torch.where(mask_final == 13.0, torch.ones_like(mask_Car_new), torch.zeros_like(mask_Car_new))
+    mask_Bkg_all = torch.where(mask_final < 11.0, 1., 0.)
+    mask_Build_new = torch.where(mask_final == 2.0, 1., 0.)
+    mask_Sign_new = torch.where(mask_final == 6.0, 1., 0.)
+    mask_Light_new = torch.where(mask_final == 7.0, 1., 0.)
     mask_Bkg_stuff = mask_Bkg_all - mask_Build_new - mask_Sign_new - mask_Light_new
 
     "Before the parameters of the segmentation network are fixed, the threshold for the background category is set to 0.99; "
@@ -203,20 +192,18 @@ def UpdateIRSegGTv3(seg_tensor1, seg_tensor2, ori_seg_GT, input_IR, prob_th):
         High_th = prob_th + 0.04
 
     # High_th = 0.99
-    LHP_mask = torch.zeros_like(pred_max_value1)
-    LHP_mask = torch.where(pred_max_value1 < High_th, torch.ones_like(LHP_mask), torch.zeros_like(LHP_mask))
+    LHP_mask = torch.where(pred_max_value1 < High_th, 1., 0.)
     # VegRoad_LP_mask = LHP_mask.mul(mask_Veg_new) + LHP_mask.mul(mask_Road_new)
     VegRoad_LP_mask = LHP_mask.mul(mask_Bkg_stuff)
     ####Confusing categories Mask
 
-    mask_CurtVeg = (torch.ones_like(mask_Bkg_stuff) - VegRoad_LP_mask).mul(mask_final) + VegRoad_LP_mask * 255.0
+    mask_CurtVeg = (1 - VegRoad_LP_mask).mul(mask_final) + VegRoad_LP_mask * 255.0
 
     ###Fusion with original GT masks of thing classes
 
     seg_GT_float = torch.squeeze(ori_seg_GT).float()
-    segGT_obj_mask = torch.zeros_like(seg_GT_float)
-    segGT_obj_mask = torch.where(seg_GT_float < 255.0, torch.ones_like(seg_GT_float), segGT_obj_mask)
-    out_mask = (torch.ones_like(segGT_obj_mask) - segGT_obj_mask).mul(mask_CurtVeg) + segGT_obj_mask.mul(seg_GT_float)
+    segGT_obj_mask = torch.where(seg_GT_float < 255.0, 1., 0.)
+    out_mask = (1 - segGT_obj_mask).mul(mask_CurtVeg) + segGT_obj_mask.mul(seg_GT_float)
 
     return out_mask.expand_as(ori_seg_GT).detach()
 
