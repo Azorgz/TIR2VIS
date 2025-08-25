@@ -1,4 +1,5 @@
 import math
+from dataclasses import dataclass
 
 import numpy as np
 import torch
@@ -12,6 +13,35 @@ from ImagesCameras import ImageTensor
 from models.networks import Vgg16, Get_gradmag_gray, RGBuvHistBlock
 from models.utils_fct import get_ROI_top_part_mask, GetFeaMatrixCenter, bhw_to_onehot, ClsMeanPixelValue, \
     getLightDarkRegionMean, RefineLightMask, split_im, getLightRegionColor, create_fake_TLight, create_fake_Light
+
+
+@dataclass
+class Sem_class:
+    light = 6
+    veg = 8
+    SLight = 12
+    sign = 7
+    person = 11
+    vehicle = [13, 14, 15, 16]
+    motor = 17
+
+    def get_id(self, name):
+        if name == 'light':
+            return self.light
+        elif name == 'veg':
+            return self.veg
+        elif name == 'SLight':
+            return self.SLight
+        elif name == 'sign':
+            return self.sign
+        elif name == 'person':
+            return self.person
+        elif name == 'vehicle':
+            return self.vehicle
+        elif name == 'motor':
+            return self.motor
+        else:
+            raise ValueError(f"Unknown semantic class: {name}")
 
 
 class SSIM_Loss(SSIM):
@@ -658,10 +688,10 @@ def BiasCorrLossV2(Seg_mask, fake_Night, real_vis, rec_vis, real_vis_edgemap, gp
     GT_mask_resize = F.interpolate(Seg_mask.expand(1, 1, seg_h, seg_w).float(), size=[h, w], mode='nearest')
     GT_mask = torch.squeeze(GT_mask_resize[0])
 
-    light_mask_ori = torch.where(GT_mask == 6.0, 1, 0)
-    veg_mask = torch.where(GT_mask == 8.0, 1, 0)
+    Tlight_mask = torch.where(GT_mask == 6.0, 1, 0)
+    # veg_mask = torch.where(GT_mask == 8.0, 1, 0)
     SLight_mask_ori = torch.where(GT_mask == 12.0, 1, 0)
-    light_mask = RefineLightMask(GT_mask, real_vis, gpu_ids)
+    # Tlight_mask = RefineLightMask(GT_mask, real_vis, gpu_ids)
 
     fake_img_norm = (fake_Night + 1.0) * 0.5
     real_img_norm = (real_vis + 1.0) * 0.5
@@ -675,22 +705,24 @@ def BiasCorrLossV2(Seg_mask, fake_Night, real_vis, rec_vis, real_vis_edgemap, gp
     max_pool_k5 = nn.MaxPool2d(kernel_size=5, stride=1, padding=2)
     # Tlight_mask = torch.squeeze(-max_pool_k5(- light_mask.float().expand(1, 1, h, w)))
 
-    if torch.sum(light_mask) > 25:
-        new_GT_color = create_fake_TLight(real_img_norm, light_mask)
-        TLight_fake_region = light_mask_ori.mul(fake_img_norm)
-        TLight_loss = F.relu(TLight_fake_region - new_GT_color).mean()
+    Tlight_mask_area = torch.sum(Tlight_mask)
+    if Tlight_mask_area > 25:
+        new_GT_color = create_fake_TLight(real_img_norm, Tlight_mask)
+        TLight_fake_region = Tlight_mask.mul(fake_img_norm)
+        TLight_loss = F.relu((TLight_fake_region - new_GT_color)**2).sum() / Tlight_mask_area
     else:
         TLight_loss = 0.0
 
-    if torch.sum(SLight_mask_ori) > 25:
+    SLight_mask_area = torch.sum(SLight_mask_ori)
+    if SLight_mask_area > 25:
         new_GT_color = create_fake_Light(real_img_norm, SLight_mask_ori)
         SLight_fake_region = SLight_mask_ori.mul(fake_img_norm)
-        SLight_loss = F.relu(SLight_fake_region - new_GT_color).mean()
+        SLight_loss = F.relu((SLight_fake_region - new_GT_color)**2).sum() / SLight_mask_area
     else:
         SLight_loss = 0.0
 
     ## Light regulation
-    mask_error = fake_VIS_gray * (1 - light_mask - SLight_mask_ori) > real_vis_gray * 1.1 * (1 - light_mask - SLight_mask_ori)
+    mask_error = fake_VIS_gray * (1 - Tlight_mask - SLight_mask_ori) > real_vis_gray * 1.1 * (1 - Tlight_mask - SLight_mask_ori)
     Overlight_loss = (mask_error*2.).mean()
 
 
@@ -704,8 +736,8 @@ def BiasCorrLossV2(Seg_mask, fake_Night, real_vis, rec_vis, real_vis_edgemap, gp
     else:
         sign_rec_loss = 0.0
     ####Traffic light reconstruction loss
-    if torch.sum(light_mask) > 10:
-        light_rec_loss = PixelConsistencyLoss(rec_vis, real_vis, light_mask, 3)
+    if torch.sum(Tlight_mask) > 10:
+        light_rec_loss = PixelConsistencyLoss(rec_vis, real_vis, Tlight_mask, 3)
     else:
         light_rec_loss = 0.0
     ####Motorcycle reconstruction loss
@@ -868,6 +900,19 @@ def HistogramLoss(fake_im, real_color, GT_seg):
                     loss += histogram_loss(hist_real, hist_fake)
             losses.append(loss)
     return sum(losses)
+
+
+def ObjectColorLoss(image_fake, GT_seg, class_name='person', color=[0, 0, 0]):
+    id_class = Sem_class().get_id(class_name)
+    mask = torch.where(GT_seg == id_class, 1, 0).flatten(-2).squeeze()
+    if mask.sum() > 0:
+        im_fake = ImageTensor(image_fake * 0.5 + 0.5).resize(GT_seg.shape[-2:]).flatten(-2).squeeze(0)
+        color = torch.tensor(color).to(im_fake.device)
+        pixels_color = im_fake[:, mask]
+        pixel_distance = torch.log(0.5 + torch.sqrt((pixels_color - color[:, None].expand_as(pixels_color))**2 + 1e-14)).sum(dim=0).mean()
+    else:
+        pixel_distance = 0.0
+    return pixel_distance
 
 
 def ColorLoss(image_fake, image_target, GT_seg, chroma_adjust=False):

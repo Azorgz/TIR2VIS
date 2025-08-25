@@ -7,6 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import repeat
+from kornia.filters import guided_blur
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 from torchvision import models
 
@@ -834,7 +835,7 @@ class ResnetBlock(nn.Module):
 
 
 class ResnetBlock2(nn.Module):
-    def __init__(self, dim, norm_layer, use_dropout, use_bias, padding_type='reflect', n_domains=0, act=None, p_color=None, compute_flow=False):
+    def __init__(self, dim, norm_layer, use_dropout, use_bias, padding_type='reflect', n_domains=0, act=None, compute_flow=False):
         super(ResnetBlock2, self).__init__()
         act = act if act is not None else nn.PReLU()
         self.act = act
@@ -868,50 +869,59 @@ class ResnetBlock2(nn.Module):
                        norm_layer(dim)]
 
         self.conv_block = SequentialContext(n_domains, *conv_block)
-        self.fus_conv = nn.Linear(2 * dim, dim, bias=use_bias)
+        self.fus_conv = nn.Linear(2 * dim + 3, dim, bias=use_bias)
         self.final_block = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=3, padding=1, bias=use_bias),
                                          norm_layer(dim))
         self.flow_estimator = lambda x, y: run_tensor(x, y)
         self.wrapper = lambda x, f: backwarp_tensor(x, f)
-        self.conf_block = nn.Sequential(SNConv2d(2*dim, 1, kernel_size=7, padding=3, bias=use_bias),
+        self.conf_block = nn.Sequential(SNConv2d(3, 1, kernel_size=6, padding=1, stride=4, bias=use_bias),
                                         nn.InstanceNorm2d(1, affine=True),
                                         nn.Sigmoid())
         self.flow = None
-        self.pedestrian_color = p_color if p_color is not None else 0.
         self.compute_flow = compute_flow
-        self.ssim = SSIM(torch.device('cuda'))
+        self.ssim = SSIM(torch.device('cuda'), no_negative_values=True)
 
-    def forward(self, inp, *args):
+    def forward(self, inp, *args, p_color=None):
+        if isinstance(inp, tuple):
+            x, y = inp
+        else:
+            x, y = inp, None
+        pedestrian_color = torch.Tensor(p_color).to(x.device) if p_color is not None else torch.Tensor([0., 0., 0.]).to(x.device)
         if args:
             mask, image_ir, image_rgb = args
-            if image_ir is not None:
-                conf = SSIM()
+            if image_ir is not None and image_rgb is not None:
                 if self.compute_flow:
                     self.flow = self.flow_estimator(image_ir, image_rgb)
                     rec_rgb = self.wrapper(image_rgb, self.flow).detach()
                     self.flow = F.interpolate(self.flow, inp[0].shape[-2:]).detach()
+                    self.flow[:, 0] *= inp[0].shape[-2] / rec_rgb.shape[-2]
+                    self.flow[:, 1] *= inp[0].shape[-1] / rec_rgb.shape[-1]
                 else:
-                    rec_rgb = None
+                    rec_rgb = image_rgb
+                rgb, ir = ImageTensor(rec_rgb * 0.5 + 0.5), ImageTensor(image_ir * 0.5 + 0.5)
+                ssim_mask = self.ssim(rgb, torch.ones_like(rgb).to(rgb.device)*rgb.max()*0.5, return_image=True)
+                ssim_mask = ssim_mask.GRAY().resize(x.shape[-2:])
             else:
-                rec_rgb = None
+                rec_rgb = image_rgb
+                ssim_mask = torch.ones_like(x).to(x.device)
+                mask = torch.ones([64, 64]).to(x.device)
         else:
-            mask, image_ir, image_rgb, rec_rgb = None, None, None, None
+            mask, image_ir, image_rgb, rec_rgb = torch.ones([64, 64]).to(x.device), None, None, None
+            ssim_mask = torch.ones_like(x).to(x.device)
         if isinstance(inp, tuple):
-            x, y = inp
             b, c, h, w = x.shape
             y = y if self.flow is None else self.wrapper(y, self.flow)
             y_ = self.conv_block(y)
-            p_color_layer = self.pedestrian_color[None, :, None, None].expand([b, c, h, w]).to(x.device)
-            xy_ = torch.cat([x, y_, p_color_layer], dim=1)
+            x_ = self.conv_block(x)
+            p_color_layer = pedestrian_color[None, :, None, None].expand([b, 3, h, w])
+            xy_ = torch.cat([x_, y_, p_color_layer], dim=1)
             res = self.fus_conv(xy_.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+            res = torch.cat([res, y_], dim=0).max(dim=0, keepdim=True)[0].squeeze()
             res = self.final_block(res)
-            conf = self.filter(self.conf_block(xy_).squeeze(), mask) if mask is not None else self.conf_block(xy_).squeeze()
-            res = x + (conf + 0.1) * res
-            # x_min, x_max = x.min(), x.max()
-            # x_ = x + x_
-            # x = (x_ - x_.min()) / (x_.max() - x_.min() + 1e-14)
-            # x = x * (x_max - x_min) + x_min
-            return res, rec_rgb
+            # conf = self.filter(ssim_mask.squeeze(), mask) \
+            #     if mask is not None else self.conf_block(rec_rgb)
+            # mask_f = self.filter(ssim_mask.squeeze() + conf, mask)
+            return x + res, rec_rgb
         return inp + self.conv_block(inp), rec_rgb
 
     def filter(self, feat, mask):
@@ -983,11 +993,11 @@ class ConcatBlock(nn.Module):
             conv_block_fus += [nn.Dropout(0.5)]
 
         conv_block_fus += [ResnetBlock2(dim, norm_layer, use_dropout, use_bias, padding_type, n_domains,
-                                        act) for _ in range(nb_blocks)]
+                                        nn.ReLU(), compute_flow=i==0) for i in range(nb_blocks)]
         #
         self.conv_block_fus = nn.Sequential(*conv_block_fus)
 
-    def forward(self, x_input, y_input=None, *args):
+    def forward(self, x_input, y_input, *args, p_color=None):
         rgb_rec = None
         if args:
             mask, image_ir, image_rgb = args
@@ -996,9 +1006,9 @@ class ConcatBlock(nn.Module):
         z = y_input
         for i, conv in enumerate(self.conv_block_fus):
             if i == 0:
-                z, rgb_rec = conv((x_input, z), mask, image_ir, image_rgb)
+                z, rgb_rec = conv((x_input, z), mask, image_ir, image_rgb, p_color=p_color)
             else:
-                z, _ = conv((x_input, z), mask, None, None)
+                z, _ = conv((x_input, z), mask, image_ir, image_rgb, p_color=p_color)
         return z, rgb_rec
 
 
@@ -1474,7 +1484,8 @@ class Plexer(nn.Module):
             filename = path + f'{i}.pth'
             if isfile(filename):
                 dic = torch.load(filename)
-                # dic = {k: (v if 'conf_block.0.weight' not in k else v[:, :4]) for k, v in dic.items()}
+                # if 'G6' in filename:
+                #     dic = {k: (v if 'conf_block.0.weight' not in k else torch.rand([1, 3, 6, 6])) for k, v in dic.items()}
                 net.load_state_dict(dic)
 
 
@@ -1583,11 +1594,8 @@ class Color_G_Plexer(G_Plexer):
     # def fusion_features(self, feat1, feat2):  # The input need to be aligned
     #     return self.feature_concatenation(feat1, feat2)
 
-    def fusion_features(self, image1, image2, *args):  # The input need to be aligned
-        return self.feature_concatenation(image1, image2, *args)
-
-    def separation_features(self, feat):
-        return self.feature_concatenation(feat, sep=True)
+    def fusion_features(self, feat1, feat2, *args, p_color=None):  # The input need to be aligned
+        return self.feature_concatenation(feat1, feat2, *args, p_color=p_color)
 
 
 class D_Plexer(Plexer):

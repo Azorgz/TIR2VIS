@@ -22,7 +22,7 @@ def tensor2im(image_tensor, imtype=np.uint8):
     img = image_tensor[0].cpu().float().numpy()
     # image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0
     # img = img.squeeze()
-    img = (((img - img.min()) * 255) / (img.max() - img.min())).transpose(1, 2, 0).astype(imtype)
+    img = (((img - img.min()) * 255) / (img.max() - img.min() + 1e-14)).transpose(1, 2, 0).astype(imtype)
     if img.shape[2] < 3:
         img = np.dstack([img]*3)
     return img

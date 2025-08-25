@@ -1521,10 +1521,13 @@ def get_light_color(img_ref, img_test, pos, radius):
 def create_fake_TLight(img, mask_p):
     TLight_region = mask_p.mul(img)
     img_processed = TLight_region ** 7
-    img_processed = img_processed/img_processed.max()
+    m = TLight_region.std(dim=1, keepdim=True) > (
+                (TLight_region > 0) * TLight_region.std(dim=1, keepdim=True)).sum() / (
+                    (TLight_region > 0).sum() + 1e-6)
+    img_processed = img_processed * m.expand_as(img_processed)
     padsize = 5 // 2
     MaxPool_k5 = nn.MaxPool2d(5, stride=1, padding=padsize)
-    for i in range(3):
+    for i in range(2):
         img_processed = MaxPool_k5(img_processed)
         img_processed = gaussian_blur(img_processed / (img_processed.max() + 1e-14), (11, 11), (5., 5.))
     img_processed = (img_processed / (img_processed.max() + 1e-14) + TLight_region*0.1).clamp(0, 1)
@@ -1539,16 +1542,16 @@ def create_fake_TLight(img, mask_p):
         patch_overlap = gaussian_blur(temp_connect_mask.expand_as(img_processed), (11, 11), (7., 7.))
         patch_overlap /= patch_overlap.max()
         # patch_overlap_neg = (1 - patch_overlap) * (patch_overlap>0)
-        if patch_mean[0] - 2 * patch_mean[2] > 0:  # if red
-            light_i = patch_overlap * (patch_max[None, :, None, None].expand_as(light_i) + 0.2)
+        if patch_mean[0] - 1.5 * patch_mean[2] > 0:  # if red
+            light_i = patch_overlap * light_i * 3
             light_i = light_i.clamp(0, 1)
-        elif patch_mean[2] - 2 * patch_mean[0] > 0:  # if green
-            light_i = patch_overlap * (patch_max[None, :, None, None].expand_as(light_i) + 0.2)
+        elif patch_mean[2] - 1.5 * patch_mean[0] > 0:  # if green
+            light_i = patch_overlap * light_i * 3
             light_i = light_i.clamp(0, 1)
         else:
-            light_i = 0 * light_i
+            light_i = 0
         fake += light_i
-    return fake/fake.max()
+    return fake/(fake.max() + 1e-6)
 
 
 def create_fake_Light(img, mask_p):
