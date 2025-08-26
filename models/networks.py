@@ -421,7 +421,7 @@ class FeedForward(nn.Module):
 class CrossAttentionBlock(nn.Module):
     def __init__(self,
                 dimf=64,
-                dimd=128,
+                dimd=64,
                 num_heads=8,
                 ffn_expansion_factor=2,
                 bias=False,
@@ -628,6 +628,41 @@ def autopad(k, p=None, d=1):  # kernel, padding, dilation
         p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
 
+
+class DE_Decoder(nn.Module):
+    def __init__(self,
+                out_dim=128,
+                in_dim=128,
+                num_blocks=5,
+                heads=[8, 8, 8],
+                ffn_expansion_factor=2,
+                bias=False,
+                LayerNorm_type='WithBias',
+                ):
+
+        super(DE_Decoder, self).__init__()
+        self.reduce_channel = nn.Conv2d(int(in_dim*2), int(in_dim), kernel_size=1, bias=bias)
+        self.encoder_level2 = nn.Sequential(*[LowFreqExtractor(dim=in_dim) for i in range(num_blocks)])
+        self.output = nn.Sequential(
+            TransformerBlock(dim=in_dim, num_heads=heads[1], ffn_expansion_factor=ffn_expansion_factor,
+            bias=bias, LayerNorm_type=LayerNorm_type),
+            nn.ReflectionPad2d(1),
+            nn.Conv2d(int(in_dim), int(in_dim)//2, kernel_size=3,
+                    stride=1, padding=0, bias=bias),
+            nn.LeakyReLU(),
+            nn.ReflectionPad2d(1),
+            nn.Conv2d(int(in_dim)//2, out_dim, kernel_size=3,
+                    stride=1, padding=0, bias=bias),
+            )
+        self.act = nn.SiLU(inplace=True)
+
+    def forward(self, base_feature, detail_feature):
+        embedded_feature = torch.cat((base_feature, detail_feature), dim=1)
+        embedded_feature = self.reduce_channel(embedded_feature)
+        base_feature = self.encoder_level2(embedded_feature)
+        out = self.output(base_feature)
+        return self.act(out)
+
 #######################################Positional Encoding############
 
 ##########Central Difference Convolution, borrowed from https://github.com/ZitongYu/CDCN/
@@ -677,10 +712,17 @@ def define_G(input_nc, output_nc, ngf, net_Gen_type, n_blocks, n_blocks_shared, 
     enc_args = (input_nc, n_blocks_enc) + dup_args
     dec_args = (output_nc, n_blocks_dec) + dup_args
 
+    if n_blocks_shared > 0:
+        shared_args = (ngf, 8, 2, False, 'WithBias')
+        SharedBlock = TransformerBlock
+    else:
+        SharedBlock = None
+        shared_args = None
+
     if net_Gen_type == 'gen_v1':
-        plex_netG = G_Plexer(n_domains, ResnetGenEncoder, enc_args, ResnetGenDecoderv1, dec_args)
+        plex_netG = G_Plexer(n_domains, ResnetGenEncoder, enc_args, ResnetGenDecoderv1, dec_args, SharedBlock, shared_args)
     elif net_Gen_type == 'gen_SGPA':
-        plex_netG = G_Plexer(n_domains, ResnetGenEncoderv2, enc_args, ResnetGenDecoderv1, dec_args)
+        plex_netG = G_Plexer(n_domains, ResnetGenEncoderv2, enc_args, ResnetGenDecoderv1, dec_args, SharedBlock, shared_args)
     else:
         raise NotImplementedError('Generation Net [%s] is not found' % net_Gen_type)
 
@@ -1769,20 +1811,22 @@ class SegmentorHeadv2(nn.Module):
 
 
 class AttnFusionBlock(nn.Module):
-    def __init__(self, dim, norm_layer, use_dropout, use_bias, padding_type='reflect', n_domains=0,
-                 gpu_ids=[], ratio=0.1):
+    def __init__(self, dim=128):
         super(AttnFusionBlock, self).__init__()
-        LFExtractor = nn.DataParallel(LowFreqExtractor(dim=dim))
-        HFExtractor = nn.DataParallel(HighFreqExtractor(num_layers=3, dim=dim))
-        CA1 = nn.DataParallel(CrossAttentionBlock())
-        CA3 = nn.DataParallel(CrossAttentionBlock())
+        self.LFExtractor = nn.DataParallel(LowFreqExtractor(dim=dim))
+        self.HFExtractor = nn.DataParallel(HighFreqExtractor(num_layers=3, dim=dim))
+        self.CA_HF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=dim))
+        self.CA_LF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=dim))
+        self.Decoder = DE_Decoder(out_dim=dim, in_dim=dim)
 
     def forward(self, x_input, y_input):
-        z = torch.cat([x_input, y_input], dim=1)
-        attn_map = self.attn(z)
-        z = x_input * attn_map + y_input * (1 - attn_map)
-        for conv in self.conv_block_fus:
-            z, _ = conv((x_input, z))
+        LF_x = self.LFExtractor(x_input)
+        LF_y = self.LFExtractor(y_input)
+        HF_x = self.HFExtractor(x_input)
+        HF_y = self.HFExtractor(y_input)
+        LF_xy = self.CA_LF(LF_x, LF_y) + LF_x
+        HF_xy = self.CA_HF(HF_x, HF_y) + HF_x
+        z = self.Decoder(LF_xy, HF_xy)
         return z
 
 #### PLEXERS
@@ -1858,8 +1902,8 @@ class G_Plexer(Plexer):
 
         self.sharing = block is not None
         if self.sharing:
-            self.shared_encoder = block(*shenc_args)
-            self.shared_decoder = block(*shdec_args)
+            self.shared_encoder = nn.Sequential(*[block(*shenc_args[1:])]*shenc_args[0])
+            self.shared_decoder = nn.Sequential(*[block(*shenc_args[1:])]*shenc_args[0])
             self.encoders.append(self.shared_encoder)
             self.decoders.append(self.shared_decoder)
         self.networks = self.encoders + self.decoders
@@ -1912,7 +1956,9 @@ class Color_G_Plexer(G_Plexer):
         lr = optimizers.param_groups[0]['lr']
         betas = optimizers.param_groups[0]['betas']
         concat_args = (256, 4, self.enc_args[3], self.enc_args[4], self.enc_args[6])
-        self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
+        # self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
+        self.feature_concatenation = AttnFusionBlock(dim=256)
+
         # self.feature_concatenation = FusBlock(*concat_args, n_domains=2, gpu_ids=plexer.enc_args[5])
         # body = create_body(resnet18(weights=ResNet18_Weights.IMAGENET1K_V1), pretrained=True, n_in=4, cut=-2)
         # net_G = DynamicUnet(body, 3, (256, 256))
