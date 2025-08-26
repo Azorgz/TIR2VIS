@@ -2259,32 +2259,32 @@ class GanColorCombo(ComboGANModel):
     def backward_D(self):
         self.loss_D = {self.DA: 0., self.DB: 0., self.DC: 0.}
         # D_A
-        if self.cond('A', dom='D'):
-            fake_A = self.fake_pools[self.DA].query(self.fake_A)
-            self.loss_D[self.DA] += self.backward_D_basic(self.pred_real_A, fake_A, self.DA)
-            fake_A_C = self.fake_pools[self.DA].query(self.fake_A_C)
-            self.loss_D[self.DA] += self.backward_D_basic(self.pred_real_A, fake_A_C, self.DA)
-            fake_A_BC = self.fake_pools[self.DA].query(self.fake_A_BC)
-            self.loss_D[self.DA] += self.backward_D_basic(self.pred_real_A, fake_A_BC, self.DA)
-            (self.loss_D[self.DA] / 3).backward()
+        # if self.cond('A', dom='D'):
+        fake_A = self.fake_pools[self.DA].query(self.fake_A)
+        self.loss_D[self.DA] += self.backward_D_basic(self.pred_real_A, fake_A, self.DA)
+        fake_A_C = self.fake_pools[self.DA].query(self.fake_A_C)
+        self.loss_D[self.DA] += self.backward_D_basic(self.pred_real_A, fake_A_C, self.DA)
+        fake_A_BC = self.fake_pools[self.DA].query(self.fake_A_BC)
+        self.loss_D[self.DA] += self.backward_D_basic(self.pred_real_A, fake_A_BC, self.DA)
+        (self.loss_D[self.DA] / 3).backward()
 
         # D_B
-        if self.cond('B', dom='D'):
-            fake_B = self.fake_pools[self.DB].query(self.fake_B)
-            self.loss_D[self.DB] += self.backward_D_basic(self.pred_real_B, fake_B, self.DB)
-            # fake_B_C = self.fake_pools[self.DB].query(self.fake_B_C)
-            # self.loss_D[self.DB] += self.backward_D_basic(self.pred_real_B, fake_B_C, self.DB)
-            (self.loss_D[self.DB] / 1).backward()
+        # if self.cond('B', dom='D'):
+        fake_B = self.fake_pools[self.DB].query(self.fake_B)
+        self.loss_D[self.DB] += self.backward_D_basic(self.pred_real_B, fake_B, self.DB)
+        # fake_B_C = self.fake_pools[self.DB].query(self.fake_B_C)
+        # self.loss_D[self.DB] += self.backward_D_basic(self.pred_real_B, fake_B_C, self.DB)
+        (self.loss_D[self.DB] / 1).backward()
 
         # D_C
-        if self.cond('C', dom='D'):
-            fake_C_A = self.fake_pools[self.DC].query(self.fake_C_A)
-            self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_C_A, self.DC)
-            # fake_C_B = self.fake_pools[self.DC].query(self.fake_C_B)
-            # self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_C_B, self.DC)
-            # fake_BC = self.fake_pools[self.DC].query(self.fake_BC)
-            # self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_BC, self.DC)
-            (self.loss_D[self.DC] / 1).backward()
+        # if self.cond('C', dom='D'):
+        fake_C_A = self.fake_pools[self.DC].query(self.fake_C_A)
+        self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_C_A, self.DC)
+        # fake_C_B = self.fake_pools[self.DC].query(self.fake_C_B)
+        # self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_C_B, self.DC)
+        # fake_BC = self.fake_pools[self.DC].query(self.fake_BC)
+        # self.loss_D[self.DC] += self.backward_D_basic(self.pred_real_C, fake_BC, self.DC)
+        (self.loss_D[self.DC] / 1).backward()
 
     def get_current_visuals(self, testing=False):
         if not testing:
