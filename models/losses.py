@@ -912,7 +912,7 @@ def ObjectColorLoss(image_fake, GT_seg, class_name='person', color=[0, 0, 0]):
         pixel_distance = torch.log(0.5 + torch.sqrt((pixels_color - color[:, None].expand_as(pixels_color))**2 + 1e-14)).sum(dim=0).mean()
     else:
         pixel_distance = 0.0
-    return pixel_distance
+    return pixel_distance * 0.1
 
 
 def ColorLoss(image_fake, image_target, GT_seg, chroma_adjust=False):

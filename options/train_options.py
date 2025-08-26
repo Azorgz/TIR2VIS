@@ -47,20 +47,20 @@ class TrainOptions(BaseOptions):
         BaseOptions.initialize(self)
         self.isTrain = True
 
-        self.parser.add_argument('--continue_train', type=bool, default=True,
+        self.parser.add_argument('--continue_train', type=bool, default=False,
                                  help='continue training: load the latest model')
         self.parser.add_argument('--simple_train', type=bool, default=False,
                                  help='continue training: load the latest model')
         self.parser.add_argument('--simple_train_channel', type=int, default=0,
                                  help='alternate between 0/1 and 0/2 mod every n steps')
-        self.parser.add_argument('--which_epoch', type=int, default=41,
+        self.parser.add_argument('--which_epoch', type=int, default=0,
                                  help='which epoch to load if continuing training')
-        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default='latest', #validate_epoch_load({'G': 'latest', 'S': 100, 'S2': 'latest', 'D': 'latest'}),  #'latest', #validate_epoch_load(
+        self.parser.add_argument('--epoch_load', type=validate_epoch_load, default=validate_epoch_load({'G': 0, 'S': 100, 'D': 100}),  #'latest', #validate_epoch_load(
                                  # {'G0': 'latest', 'G1': -1, 'G2': 'latest', 'G3': 'latest', 'G4': -1, 'G5': 'latest', 'G6': 'latest',
                                  #  'D0': 'latest', 'D2': 'latest', 'S': 'latest'}),
                                  help='which epoch to load if continuing training')
         self.parser.add_argument("--partial_train", type=Union[dict, None],
-                                 default={'G': [0, 1, 2, 3, 4, 5, 6], 'D': [0, 1, 2], 'S': [2]},
+                                 default={'G': [0, 1, 2, 3, 4, 5, 6], 'D': [2], 'S': [2]},
                                  help="Which domains of G - D - S are trained in ["
                                       "0 - 3: visible Encoder - Decoder"
                                       "1 - 4: IR Encoder - Decoder"
