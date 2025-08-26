@@ -1956,8 +1956,8 @@ class Color_G_Plexer(G_Plexer):
         lr = optimizers.param_groups[0]['lr']
         betas = optimizers.param_groups[0]['betas']
         concat_args = (256, 4, self.enc_args[3], self.enc_args[4], self.enc_args[6])
-        # self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
-        self.feature_concatenation = AttnFusionBlock(dim=256)
+        self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
+        # self.feature_concatenation = AttnFusionBlock(dim=256)
 
         # self.feature_concatenation = FusBlock(*concat_args, n_domains=2, gpu_ids=plexer.enc_args[5])
         # body = create_body(resnet18(weights=ResNet18_Weights.IMAGENET1K_V1), pretrained=True, n_in=4, cut=-2)
