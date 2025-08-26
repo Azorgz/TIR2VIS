@@ -1630,7 +1630,7 @@ class GanColorCombo(ComboGANModel):
 
         # Optional Scale Robustness Loss on generated fake images, added by lfy
         self.loss_SR = {self.DC: 0.0}
-        if self.DB_GT_update_idx > 0.0:
+        if self.DB_GT_update_idx > 100.0:
             inv_idx = torch.rand(1)
             if inv_idx > 0.5:
                 fake_A_BC_ds = F.interpolate(self.fake_A_BC, size=[128, 128], mode='bilinear', align_corners=False)
@@ -1665,13 +1665,13 @@ class GanColorCombo(ComboGANModel):
             #     if self.cond('EC', 'DA', 'EA', 'DC') else self.null
             # self.loss_color += self.criterionColor(self.rec_A_BC, self.real_A, None) * self.lambda_color \
             #     if self.cond('EC', 'DA', 'EA', 'DC') else self.null
-        if self.epoch > 30:
-            self.loss_color += self.criterionColor(self.fake_A_C, self.real_C, self.SegMask_B_update,
-                                                   chroma_adjust=True) * self.lambda_color \
-                if self.cond('EC', 'DA') else self.null
-            self.loss_color += self.criterionColor(self.fake_A_BC, self.rec_real_C.detach(),
-                                                   self.SegMask_B_update) * self.lambda_color \
-                if self.cond('EC', 'DA', 'EB', 'Fus') else self.null
+        # if self.epoch > 30:
+        #     self.loss_color += self.criterionColor(self.fake_A_C, self.real_C, self.SegMask_B_update,
+        #                                            chroma_adjust=True) * self.lambda_color \
+        #         if self.cond('EC', 'DA') else self.null
+        #     self.loss_color += self.criterionColor(self.fake_A_BC, self.rec_real_C.detach(),
+        #                                            self.SegMask_B_update) * self.lambda_color \
+        #         if self.cond('EC', 'DA', 'EB', 'Fus') else self.null
             self.loss_color += self.criterionObjectColor(self.rec_A_BC, self.SegMask_A, 'person', self.pedestrian_color)
 
             # self.loss_color += self.criterionColor(self.rec_C_A_BC, self.real_C, self.SegMask_B_update) * self.lambda_color

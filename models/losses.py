@@ -689,7 +689,6 @@ def BiasCorrLossV2(Seg_mask, fake_Night, real_vis, rec_vis, real_vis_edgemap, gp
     GT_mask = torch.squeeze(GT_mask_resize[0])
 
     Tlight_mask = torch.where(GT_mask == 6.0, 1, 0)
-    # veg_mask = torch.where(GT_mask == 8.0, 1, 0)
     SLight_mask_ori = torch.where(GT_mask == 12.0, 1, 0)
     # Tlight_mask = RefineLightMask(GT_mask, real_vis, gpu_ids)
 
@@ -704,12 +703,13 @@ def BiasCorrLossV2(Seg_mask, fake_Night, real_vis, rec_vis, real_vis_edgemap, gp
     ####Traffic light luminance adjustment loss
     max_pool_k5 = nn.MaxPool2d(kernel_size=5, stride=1, padding=2)
     # Tlight_mask = torch.squeeze(-max_pool_k5(- light_mask.float().expand(1, 1, h, w)))
-
+    mask_fake = torch.zeros_like(fake_img_norm)
     Tlight_mask_area = torch.sum(Tlight_mask)
     if Tlight_mask_area > 25:
         new_GT_color = create_fake_TLight(real_img_norm, Tlight_mask)
         TLight_fake_region = Tlight_mask.mul(fake_img_norm)
         TLight_loss = F.relu((TLight_fake_region - new_GT_color)**2).sum() / Tlight_mask_area
+        mask_fake += new_GT_color > 0
     else:
         TLight_loss = 0.0
 
@@ -718,12 +718,13 @@ def BiasCorrLossV2(Seg_mask, fake_Night, real_vis, rec_vis, real_vis_edgemap, gp
         new_GT_color = create_fake_Light(real_img_norm, SLight_mask_ori)
         SLight_fake_region = SLight_mask_ori.mul(fake_img_norm)
         SLight_loss = F.relu((SLight_fake_region - new_GT_color)**2).sum() / SLight_mask_area
+        mask_fake += new_GT_color > 0
     else:
         SLight_loss = 0.0
 
     ## Light regulation
-    mask_error = fake_VIS_gray * (1 - Tlight_mask - SLight_mask_ori) > real_vis_gray * 1.1 * (1 - Tlight_mask - SLight_mask_ori)
-    Overlight_loss = (mask_error*2.).mean()
+    mask_error = fake_VIS_gray * (1 - mask_fake) > real_vis_gray * (1 - mask_fake)
+    Overlight_loss = (mask_error*2.).sum() / (1 - mask_fake).sum() if (1 - mask_fake).sum() > 0 else (mask_error*2.).mean()
 
 
     ABC_losses = TLight_loss + SLight_loss + Overlight_loss
