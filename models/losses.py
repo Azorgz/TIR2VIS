@@ -723,7 +723,7 @@ def BiasCorrLossV2(Seg_mask, fake_Night, real_vis, rec_vis, real_vis_edgemap, gp
         SLight_loss = 0.0
 
     ## Light regulation
-    mask_error = F.relu(real_vis_gray * (1 - mask_fake) - fake_VIS_gray * (1 - mask_fake))
+    mask_error = F.relu(fake_VIS_gray * (1 - mask_fake) - real_vis_gray * (1 - mask_fake))
     Overlight_loss = mask_error.sum() / (1 - mask_fake).sum() if (1 - mask_fake).sum() > 0 else mask_error.mean()
 
 
