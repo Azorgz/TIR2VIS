@@ -1358,7 +1358,7 @@ class ConcatBlock(nn.Module):
             conv_block_fus += [nn.Dropout(0.5)]
 
         conv_block_fus += [ResnetBlock2(dim, norm_layer, use_dropout, use_bias, padding_type, n_domains,
-                                        nn.ReLU(), compute_flow=i==0) for i in range(nb_blocks)]
+                                        nn.ReLU(), compute_flow=i == 0) for i in range(nb_blocks)]
         #
         self.conv_block_fus = nn.Sequential(*conv_block_fus)
 
@@ -1953,8 +1953,8 @@ class Color_G_Plexer(G_Plexer):
         betas = optimizers.param_groups[0]['betas']
         concat_args = (256, 4, self.enc_args[3], self.enc_args[4], self.enc_args[6])
         self.spatialTransformer = SpatialCorrectionBlock()
-        # self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
-        self.feature_concatenation = AttnFusionBlock(dim=256)
+        self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
+        # self.feature_concatenation = AttnFusionBlock(dim=256)
         self.networks.append(self.feature_concatenation)
         self.init_optimizers(opt, lr, betas)
 
