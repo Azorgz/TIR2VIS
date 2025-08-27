@@ -855,7 +855,7 @@ class GanColorCombo(ComboGANModel):
         self.simple_train_channel = 0, 1
         self.set_partial_train()
         self.rec_A, self.rec_B, self.rec_C, self.rec_BC = None, None, None, None
-        self.pedestrian_color = mcolors.to_rgb(mcolors.CSS4_COLORS[opt.pedestrian_color])
+        self.pedestrian_color = Tensor(mcolors.to_rgb(mcolors.CSS4_COLORS[opt.pedestrian_color]))
         self.alternate = 0
 
         #######################################
@@ -1377,6 +1377,7 @@ class GanColorCombo(ComboGANModel):
         encoded_A = self.netG.encode(self.real_A, self.DA)
         encoded_B = self.netG.encode(self.real_B, self.DB)
         encoded_C = self.netG.encode(self.real_C, self.DC)
+        self.pedestrian_color = self.pedestrian_color.to(self.real_A.device)
         encoded_BC, self.rec_real_C = self.netG.fusion_features(encoded_B, encoded_C, self.mask, self.real_B,
                                                                 self.real_C, p_color=self.pedestrian_color)
 
@@ -1421,7 +1422,10 @@ class GanColorCombo(ComboGANModel):
         # D_C(G_C(A))
         self.fake_C_A = self.netG.decode(encoded_A, self.DC)
         self.loss_G[0] += self.criterionGAN(self.pred_real_C, self.netD.forward(self.fake_C_A, self.DC), False) \
-            if self.cond('EA', 'DC') else self.null
+            if (self.cond('EA', 'DC') +
+                self.criterionSSIM((self.fake_C_A + 1) / 2, (self.real_A + 1) / 2) * self.lambda_ssim) else self.null
+
+
 
         # D_C(G_C(B))
         # self.fake_C_B = self.netG.decode(encoded_B, self.DC)
@@ -1442,6 +1446,7 @@ class GanColorCombo(ComboGANModel):
         self.loss_cycle = {self.DA: 0, self.DB: 0, self.DC: 0, self.Fus: 0}
         loss_cycle = lambda x, y: (self.criterionCycle(x, y) * self.lambda_cyc +
                                    self.criterionSSIM((x + 1) / 2, (y + 1) / 2) * self.lambda_ssim)
+
 
         # Forward cycle loss for domain A
         rec_encoded_A = self.netG.encode(self.fake_B, self.DB)
@@ -1911,7 +1916,6 @@ class GanColorCombo(ComboGANModel):
                   self.loss_saturation)
 
         loss_G.backward()
-
     def backward_G_simple(self):
         encoded_A = self.netG.encode(self.real_A, self.DA)
         encoded_B = self.netG.encode(self.real_B, self.DB)
@@ -2029,7 +2033,9 @@ class GanColorCombo(ComboGANModel):
                         0.5 * self.criterionSemEdge(self.real_A_pred, self.SegMask_A_update.long(), 19,
                                                     self.gpu_ids[0]))
 
-                self.loss_S_rec[self.DA] = self.lambda_sc * seg_loss_A(fake_B_pred, self.SegMask_A_update.long())
+                self.loss_S_rec[self.DA] = (self.lambda_sc * seg_loss_A(fake_B_pred, self.SegMask_A_update.long()) +
+                                            0.5 * self.criterionSemEdge(fake_B_pred, self.SegMask_A_update.long(), 19,
+                                                    self.gpu_ids[0]))
                 self.SegMask_B_update = self.UpdateIRGTv2(self.real_B_pred.detach(), self.fake_A_pred_d,
                                                           SegMask_B_s[0].long(), real_B_s, self.IR_prob_th)
                 seg_loss_B = self.update_class_criterion(self.SegMask_B_update.long())

@@ -330,9 +330,9 @@ def to_4d(x, h, w):
     return rearrange(x, 'b (h w) c -> b c h w', h=h, w=w)
 
 
-class LayerNorm(nn.Module):
+class LNorm(nn.Module):
     def __init__(self, dim, LayerNorm_type):
-        super(LayerNorm, self).__init__()
+        super(LNorm, self).__init__()
         if LayerNorm_type == 'BiasFree':
             self.body = BiasFree_LayerNorm(dim)
         else:
@@ -355,12 +355,12 @@ class CrossAttention(nn.Module):
         self.q = nn.Sequential(nn.Conv2d(fudim, fudim, kernel_size=1, stride=1, bias=bias), # for fufm Downsampling
                                 nn.SiLU(inplace=True),
                                 nn.ReflectionPad2d(1),
-                                nn.Conv2d(fudim, fudim, kernel_size=3, stride=2, padding=0, groups=fudim, bias=bias),
+                                nn.Conv2d(fudim, fudim, kernel_size=3, stride=sf, padding=sf-1, groups=fudim, bias=bias),
                                 nn.SiLU(inplace=True),
                                 nn.Conv2d(fudim, fudim, kernel_size=1, stride=1, bias=bias),
                                 nn.SiLU(inplace=True),
                                 nn.ReflectionPad2d(1),
-                                nn.Conv2d(fudim, fudim, kernel_size=3, stride=2, padding=0, groups=fudim, bias=bias))
+                                nn.Conv2d(fudim, fudim, kernel_size=3, stride=sf, padding=sf-1, groups=fudim, bias=bias))
         self.v = nn.Sequential(nn.Conv2d(fudim, fudim, kernel_size=1, stride=1, bias=bias), # for fufm value
                                 nn.SiLU(inplace=True),
                                 nn.ReflectionPad2d(1),
@@ -426,13 +426,13 @@ class CrossAttentionBlock(nn.Module):
                 ffn_expansion_factor=2,
                 bias=False,
                 LayerNorm_type='WithBias',
-                sf=2):
+                sf=1):
         super(CrossAttentionBlock, self).__init__()
 
-        self.norm1f = LayerNorm(dimf, LayerNorm_type)
-        self.norm1d = LayerNorm(dimd, LayerNorm_type)
+        self.norm1f = LNorm(dimf, LayerNorm_type)
+        self.norm1d = LNorm(dimd, LayerNorm_type)
         self.attn = CrossAttention(dimf, dimd, num_heads, bias, sf)
-        self.norm2 = LayerNorm(dimf, LayerNorm_type)
+        self.norm2 = LNorm(dimf, LayerNorm_type)
         self.ffn = FeedForward(dimf, ffn_expansion_factor, bias)
         self.pmt = prominent()
         self.selfatt = TransformerBlock(dim=dimf, num_heads=num_heads, ffn_expansion_factor=ffn_expansion_factor,
@@ -484,9 +484,9 @@ class TransformerBlock(nn.Module):
     def __init__(self, dim, num_heads, ffn_expansion_factor, bias, LayerNorm_type, pn=1):
         super(TransformerBlock, self).__init__()
 
-        self.norm1 = LayerNorm(dim, LayerNorm_type)
+        self.norm1 = LNorm(dim, LayerNorm_type)
         self.attn = Attention(dim, num_heads, bias)
-        self.norm2 = LayerNorm(dim, LayerNorm_type)
+        self.norm2 = LNorm(dim, LayerNorm_type)
         self.ffn = FeedForward(dim, ffn_expansion_factor, bias)
         self.att1 = prominent(dim)
         self.att2 = prominent(dim)
@@ -494,7 +494,6 @@ class TransformerBlock(nn.Module):
     def forward(self, x):
         x = x + self.att1(self.attn(self.norm1(x)))
         x = x + self.att2(self.ffn(self.norm2(x)))
-
         return x
 
 
@@ -551,12 +550,12 @@ class DWBlock(nn.Module):
 
 
 class DetailNode(nn.Module):
-    def __init__(self, dim=32):
+    def __init__(self, dim=64):
         super(DetailNode, self).__init__()
-        self.theta_phi = DWBlock(inp=dim, oup=dim)
-        self.theta_rho = DWBlock(inp=dim, oup=dim)
-        self.theta_eta = DWBlock(inp=dim, oup=dim)
-        self.shffleconv = nn.Conv2d(2*dim, 2*dim, kernel_size=1,
+        self.theta_phi = DWBlock(inp=dim//2, oup=dim//2)
+        self.theta_rho = DWBlock(inp=dim//2, oup=dim//2)
+        self.theta_eta = DWBlock(inp=dim//2, oup=dim//2)
+        self.shffleconv = nn.Conv2d(dim, dim, kernel_size=1,
                                     stride=1, padding=0, bias=True)
         self.pmt = simam_module()
 
@@ -641,7 +640,7 @@ class DE_Decoder(nn.Module):
                 ):
 
         super(DE_Decoder, self).__init__()
-        self.reduce_channel = nn.Conv2d(int(in_dim*2), int(in_dim), kernel_size=1, bias=bias)
+        self.reduce_channel = nn.Conv2d(int(in_dim*2 + 3), int(in_dim), kernel_size=1, bias=bias)
         self.encoder_level2 = nn.Sequential(*[LowFreqExtractor(dim=in_dim) for i in range(num_blocks)])
         self.output = nn.Sequential(
             TransformerBlock(dim=in_dim, num_heads=heads[1], ffn_expansion_factor=ffn_expansion_factor,
@@ -654,10 +653,10 @@ class DE_Decoder(nn.Module):
             nn.Conv2d(int(in_dim)//2, out_dim, kernel_size=3,
                     stride=1, padding=0, bias=bias),
             )
-        self.act = nn.SiLU(inplace=True)
+        self.act = nn.Identity()
 
-    def forward(self, base_feature, detail_feature):
-        embedded_feature = torch.cat((base_feature, detail_feature), dim=1)
+    def forward(self, base_feature, detail_feature, pcolor):
+        embedded_feature = torch.cat((base_feature, detail_feature, pcolor), dim=1)
         embedded_feature = self.reduce_channel(embedded_feature)
         base_feature = self.encoder_level2(embedded_feature)
         out = self.output(base_feature)
@@ -1254,13 +1253,9 @@ class ResnetBlock2(nn.Module):
         self.fus_conv = nn.Linear(2 * dim + 3, dim, bias=use_bias)
         self.final_block = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=3, padding=1, bias=use_bias),
                                          norm_layer(dim))
-        self.flow_estimator = lambda x, y: run_tensor(x, y)
-        self.wrapper = lambda x, f: backwarp_tensor(x, f)
         self.conf_block = nn.Sequential(SNConv2d(3, 1, kernel_size=6, padding=1, stride=4, bias=use_bias),
                                         nn.InstanceNorm2d(1, affine=True),
                                         nn.Sigmoid())
-        self.flow = None
-        self.compute_flow = compute_flow
         self.ssim = SSIM(torch.device('cuda'), no_negative_values=True)
 
     def forward(self, inp, *args, p_color=None):
@@ -1272,27 +1267,17 @@ class ResnetBlock2(nn.Module):
         if args:
             mask, image_ir, image_rgb = args
             if image_ir is not None and image_rgb is not None:
-                if self.compute_flow:
-                    self.flow = self.flow_estimator(image_ir, image_rgb)
-                    rec_rgb = self.wrapper(image_rgb, self.flow).detach()
-                    self.flow = F.interpolate(self.flow, inp[0].shape[-2:]).detach()
-                    self.flow[:, 0] *= inp[0].shape[-2] / rec_rgb.shape[-2]
-                    self.flow[:, 1] *= inp[0].shape[-1] / rec_rgb.shape[-1]
-                else:
-                    rec_rgb = image_rgb
-                rgb, ir = ImageTensor(rec_rgb * 0.5 + 0.5), ImageTensor(image_ir * 0.5 + 0.5)
+                rgb, ir = ImageTensor(image_rgb * 0.5 + 0.5), ImageTensor(image_ir * 0.5 + 0.5)
                 ssim_mask = self.ssim(rgb, torch.ones_like(rgb).to(rgb.device)*rgb.max()*0.5, return_image=True)
                 ssim_mask = ssim_mask.GRAY().resize(x.shape[-2:])
             else:
-                rec_rgb = image_rgb
                 ssim_mask = torch.ones_like(x).to(x.device)
                 mask = torch.ones([64, 64]).to(x.device)
         else:
-            mask, image_ir, image_rgb, rec_rgb = torch.ones([64, 64]).to(x.device), None, None, None
+            mask, image_ir, image_rgb = torch.ones([64, 64]).to(x.device), None, None
             ssim_mask = torch.ones_like(x).to(x.device)
         if isinstance(inp, tuple):
             b, c, h, w = x.shape
-            y = y if self.flow is None else self.wrapper(y, self.flow)
             y_ = self.conv_block(y)
             x_ = self.conv_block(x)
             p_color_layer = pedestrian_color[None, :, None, None].expand([b, 3, h, w])
@@ -1300,11 +1285,9 @@ class ResnetBlock2(nn.Module):
             res = self.fus_conv(xy_.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
             res = torch.cat([res, y_], dim=0).max(dim=0, keepdim=True)[0].squeeze()
             res = self.final_block(res)
-            conf = self.filter(ssim_mask.squeeze(), mask) \
-                 if mask is not None else self.conf_block(rec_rgb)
-            # mask_f = self.filter(ssim_mask.squeeze() + conf, mask)
-            return x*conf + res*(1-conf), rec_rgb
-        return inp + self.conv_block(inp), rec_rgb
+            conf = self.filter(ssim_mask.squeeze(), mask) if mask is not None else self.conf_block(image_rgb)
+            return x*conf + res*(1-conf)
+        return inp + self.conv_block(inp)
 
     def filter(self, feat, mask):
         mask = mask.squeeze()
@@ -1380,18 +1363,27 @@ class ConcatBlock(nn.Module):
         self.conv_block_fus = nn.Sequential(*conv_block_fus)
 
     def forward(self, x_input, y_input, *args, p_color=None):
-        rgb_rec = None
-        if args:
-            mask, image_ir, image_rgb = args
-        else:
-            mask, image_ir, image_rgb = None, None, None
         z = y_input
         for i, conv in enumerate(self.conv_block_fus):
-            if i == 0:
-                z, rgb_rec = conv((x_input, z), mask, image_ir, image_rgb, p_color=p_color)
-            else:
-                z, _ = conv((x_input, z), mask, image_ir, image_rgb, p_color=p_color)
-        return z, rgb_rec
+            z = conv((x_input, z), *args, p_color=p_color)
+        return z
+
+
+class SpatialCorrectionBlock(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.flow_estimator = lambda x, y: run_tensor(x, y)
+        self.wrapper = lambda x, f: backwarp_tensor(x, f)
+        self.flow = None
+
+    def forward(self, image_ir, image_rgb, feat):
+        self.flow = self.flow_estimator(image_ir, image_rgb)
+        rec_rgb = self.wrapper(image_rgb, self.flow).detach()
+        self.flow = F.interpolate(self.flow, feat.shape[-2:]).detach()
+        self.flow[:, 0] *= feat.shape[-2] / rec_rgb.shape[-2]
+        self.flow[:, 1] *= feat.shape[-1] / rec_rgb.shape[-1]
+        feat_warped = self.wrapper(feat, self.flow)
+        return feat_warped, rec_rgb
 
 
 class ResBlock(nn.Module):
@@ -1819,14 +1811,18 @@ class AttnFusionBlock(nn.Module):
         self.CA_LF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=dim))
         self.Decoder = DE_Decoder(out_dim=dim, in_dim=dim)
 
-    def forward(self, x_input, y_input):
+    def forward(self, x_input, y_input, *args, p_color=None):
         LF_x = self.LFExtractor(x_input)
         LF_y = self.LFExtractor(y_input)
         HF_x = self.HFExtractor(x_input)
         HF_y = self.HFExtractor(y_input)
-        LF_xy = self.CA_LF(LF_x, LF_y) + LF_x
-        HF_xy = self.CA_HF(HF_x, HF_y) + HF_x
-        z = self.Decoder(LF_xy, HF_xy)
+        LF_xy = self.CA_LF(LF_x, LF_y)
+        HF_xy = self.CA_HF(HF_x, HF_y)
+        # LF_xy = (self.CA_LF(LF_x, LF_y) + LF_x) / 2
+        # HF_xy = (self.CA_HF(HF_x, HF_y) + HF_x) / 2
+        if p_color is None:
+            p_color = torch.zeros([3]).to(x_input.device)
+        z = self.Decoder(LF_xy, HF_xy, p_color[None, :, None, None].expand_as(x_input[:, :3]))
         return z
 
 #### PLEXERS
@@ -1956,13 +1952,9 @@ class Color_G_Plexer(G_Plexer):
         lr = optimizers.param_groups[0]['lr']
         betas = optimizers.param_groups[0]['betas']
         concat_args = (256, 4, self.enc_args[3], self.enc_args[4], self.enc_args[6])
-        self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
-        # self.feature_concatenation = AttnFusionBlock(dim=256)
-
-        # self.feature_concatenation = FusBlock(*concat_args, n_domains=2, gpu_ids=plexer.enc_args[5])
-        # body = create_body(resnet18(weights=ResNet18_Weights.IMAGENET1K_V1), pretrained=True, n_in=4, cut=-2)
-        # net_G = DynamicUnet(body, 3, (256, 256))
-        # self.feature_concatenation = net_G
+        self.spatialTransformer = SpatialCorrectionBlock()
+        # self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
+        self.feature_concatenation = AttnFusionBlock(dim=256)
         self.networks.append(self.feature_concatenation)
         self.init_optimizers(opt, lr, betas)
 
@@ -1998,8 +1990,15 @@ class Color_G_Plexer(G_Plexer):
     # def fusion_features(self, feat1, feat2):  # The input need to be aligned
     #     return self.feature_concatenation(feat1, feat2)
 
-    def fusion_features(self, feat1, feat2, *args, p_color=None):  # The input need to be aligned
-        return self.feature_concatenation(feat1, feat2, *args, p_color=p_color)
+    def fusion_features(self, featIR, featRGB, *args, p_color=None):  # The input need to be aligned
+        rgb_rec = None
+        if args:
+            mask, image_ir, image_rgb = args
+        else:
+            mask, image_ir, image_rgb = None, None, None
+        if image_ir is not None and image_rgb is not None:
+            featRGB, rgb_rec = self.spatialTransformer(image_ir, image_rgb, featRGB)
+        return self.feature_concatenation(featIR, featRGB, *args, p_color=p_color), rgb_rec
 
 
 class D_Plexer(Plexer):
