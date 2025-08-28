@@ -37,7 +37,7 @@ for epoch in range(opt.which_epoch + 1, opt.niter + opt.niter_decay + 1):
         errors = model.get_current_errors()
         if total_steps % opt.display_freq == 0:
             visualizer.display_current_results(model.get_current_visuals(), epoch)
-            subprocess.call('download_res.sh') if not 'laptop' in socket.gethostname() else opt.dataroot
+            subprocess.call('/download_res.sh') if not 'laptop' in socket.gethostname() else opt.dataroot
 
         if total_steps % opt.print_freq == 0:
             t = (time.time() - iter_start_time) / opt.batchSize
