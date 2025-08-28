@@ -1735,11 +1735,12 @@ class GanColorCombo(ComboGANModel):
             ###Traffic Light Luminance Loss
             loss_tll = self.criterionTLL(self.fake_A_BC, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
             loss_tll += self.criterionTLL(self.fake_A, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
+            loss_tll += self.criterionTLL(self.fake_A_C, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
             ####Traffic light color loss
-            loss_TLight_color = self.criterionTLC(self.real_B, self.fake_A_BC, real_B_Mask,
+            loss_TLight_color = self.criterionTLC(self.real_B, self.fake_A_C, real_B_Mask,
                                                   Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
             loss_TLight_color += self.criterionTLC(self.real_B, self.fake_A, real_B_Mask,
-                                                  Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
+                                                   Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
             loss_TLight_appe = loss_tll + loss_TLight_color
             ####Appearance consistency loss of domain B
             self.loss_AC[self.DB] = loss_ACL_B + loss_ACL_B_flip + loss_CGR_masked

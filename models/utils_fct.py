@@ -1323,8 +1323,8 @@ def UpdateFakeVISSegGT(real_vis_night, Seg_mask, dis_lum):
     return mask_low_light
 
 
-def IRComPreProcessv6(FG_mask, FG_mask_flip, Fake_IR_masked_ori, Fake_IR_masked_flip_ori, Real_IR, Real_IR_SegMask,
-                      HL_Mask_ori):
+def IRComPreProcessv6(FG_mask, FG_mask_flip, Fake_IR_masked_ori,
+                      Fake_IR_masked_flip_ori, Real_IR, Real_IR_SegMask, HL_Mask_ori):
     "Gaussian blurring is applied to the fake NTIR images to enhance the plausibility of the appearance of FG region."
 
     #### HL_Mask padding
@@ -1538,7 +1538,8 @@ def create_fake_TLight(img, mask_p):
         else:
             light_i = 0
         fake += light_i
-    return fake/(fake.max() + 1e-6)
+        fake = fake/(fake.max() + 1e-6)
+    return fake * 0.9 + TLight_region.mean(dim=1, keepdim=True).expand_as(fake) * 0.1
 
 
 def create_fake_Light(img, mask_p):

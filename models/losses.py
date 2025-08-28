@@ -689,8 +689,8 @@ def BiasCorrLossV2(Seg_mask, fake_Night, real_vis, rec_vis, real_vis_edgemap, gp
     GT_mask = torch.squeeze(GT_mask_resize[0])
 
     Tlight_mask = torch.where(GT_mask == 6.0, 1, 0)
-    SLight_mask_ori = torch.where(GT_mask == 12.0, 1, 0)
     # Tlight_mask = RefineLightMask(GT_mask, real_vis, gpu_ids)
+    SLight_mask_ori = torch.where(GT_mask == 12.0, 1, 0)
 
     fake_img_norm = (fake_Night + 1.0) * 0.5
     real_img_norm = (real_vis + 1.0) * 0.5
@@ -725,8 +725,6 @@ def BiasCorrLossV2(Seg_mask, fake_Night, real_vis, rec_vis, real_vis_edgemap, gp
     ## Light regulation
     mask_error = nn.SiLU()(fake_VIS_gray * (1 - mask_fake) - real_vis_gray * (1 - mask_fake))
     Overlight_loss = (mask_error.sum() / (1 - mask_fake).sum()) if (1 - mask_fake).sum() > 0 else mask_error.mean()
-
-
     ABC_losses = TLight_loss + SLight_loss + Overlight_loss
 
     # ##########Color bias correction loss

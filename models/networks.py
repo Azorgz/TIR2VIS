@@ -1216,7 +1216,7 @@ class ResnetBlock(nn.Module):
 
 
 class ResnetBlock2(nn.Module):
-    def __init__(self, dim, norm_layer, use_dropout, use_bias, padding_type='reflect', n_domains=0, act=None, compute_flow=False):
+    def __init__(self, dim, norm_layer, use_dropout, use_bias, padding_type='reflect', n_domains=0, act=None):
         super(ResnetBlock2, self).__init__()
         act = act if act is not None else nn.PReLU()
         self.act = act
@@ -1250,13 +1250,15 @@ class ResnetBlock2(nn.Module):
                        norm_layer(dim)]
 
         self.conv_block = SequentialContext(n_domains, *conv_block)
-        self.fus_conv = nn.Linear(2 * dim + 3, dim, bias=use_bias)
+        self.fus_conv = nn.Sequential(nn.Linear(2 * dim + 3, 2 * dim, bias=use_bias),
+                                      nn.Linear(2 * dim, dim, bias=use_bias))
         self.final_block = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=3, padding=1, bias=use_bias),
                                          norm_layer(dim))
         self.conf_block = nn.Sequential(SNConv2d(3, 1, kernel_size=6, padding=1, stride=4, bias=use_bias),
                                         nn.InstanceNorm2d(1, affine=True),
                                         nn.Sigmoid())
         self.ssim = SSIM(torch.device('cuda'), no_negative_values=True)
+        self.weightRGB = nn.Parameter(torch.FloatTensor([0.]), requires_grad=True)
 
     def forward(self, inp, *args, p_color=None):
         if isinstance(inp, tuple):
@@ -1268,8 +1270,12 @@ class ResnetBlock2(nn.Module):
             mask, image_ir, image_rgb = args
             if image_ir is not None and image_rgb is not None:
                 rgb, ir = ImageTensor(image_rgb * 0.5 + 0.5), ImageTensor(image_ir * 0.5 + 0.5)
-                ssim_mask = self.ssim(rgb, torch.ones_like(rgb).to(rgb.device)*rgb.max()*0.5, return_image=True)
-                ssim_mask = ssim_mask.GRAY().resize(x.shape[-2:])
+                ssim_mask_common = self.ssim(ir, rgb, return_image=True).mean(dim=1, keepdim=True)#.mean_shift()
+                ssim_mask_rgb = 1-self.ssim(rgb, torch.ones_like(rgb).to(rgb.device)*rgb.max(), return_image=True).mean(dim=1, keepdim=True)#.mean_shift(nn.Sigmoid()(self.weightRGB))
+                ssim_mask_ir = 1-self.ssim(ir, torch.ones_like(rgb).to(rgb.device)*ir.max(), return_image=True).mean(dim=1, keepdim=True)#.mean_shift(1-nn.Sigmoid()(self.weightRGB))
+                ssim_mask = - (ssim_mask_ir - ssim_mask_rgb) * ssim_mask_common
+                ssim_mask_full = ImageTensor((ssim_mask - ssim_mask.min()) / (ssim_mask.max() - ssim_mask.min() + 1e-6))
+                ssim_mask = ssim_mask_full.resize(x.shape[-2:])
             else:
                 ssim_mask = torch.ones_like(x).to(x.device)
                 mask = torch.ones([64, 64]).to(x.device)
@@ -1285,7 +1291,7 @@ class ResnetBlock2(nn.Module):
             res = self.fus_conv(xy_.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
             res = torch.cat([res, y_], dim=0).max(dim=0, keepdim=True)[0].squeeze()
             res = self.final_block(res)
-            conf = self.filter(ssim_mask.squeeze(), mask) if mask is not None else self.conf_block(image_rgb)
+            conf = self.filter(ssim_mask.squeeze(), mask) if mask is not None else nn.Sigmoid()((0.5 - self.conf_block(image_rgb)) * ssim_mask.squeeze())
             return x*conf + res*(1-conf)
         return inp + self.conv_block(inp)
 
@@ -1358,7 +1364,7 @@ class ConcatBlock(nn.Module):
             conv_block_fus += [nn.Dropout(0.5)]
 
         conv_block_fus += [ResnetBlock2(dim, norm_layer, use_dropout, use_bias, padding_type, n_domains,
-                                        nn.ReLU(), compute_flow=i == 0) for i in range(nb_blocks)]
+                                        nn.ReLU()) for i in range(nb_blocks)]
         #
         self.conv_block_fus = nn.Sequential(*conv_block_fus)
 
