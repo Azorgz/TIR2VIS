@@ -943,9 +943,6 @@ class GanColorCombo(ComboGANModel):
         self.loss_G[0] += self.criterionGAN(self.pred_real_C, self.netD.forward(self.fake_C_A, self.DC), False) \
             if (self.cond('EA', 'DC') +
                 self.criterionSSIM((self.fake_C_A + 1) / 2, (self.real_A + 1) / 2) * self.lambda_ssim) else self.null
-
-
-
         # D_C(G_C(B))
         # self.fake_C_B = self.netG.decode(encoded_B, self.DC)
         # D_C(G_C(Fus))

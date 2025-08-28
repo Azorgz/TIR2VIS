@@ -1289,10 +1289,10 @@ class ResnetBlock2(nn.Module):
             p_color_layer = pedestrian_color[None, :, None, None].expand([b, 3, h, w])
             xy_ = torch.cat([x_, y_, p_color_layer], dim=1)
             res = self.fus_conv(xy_.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
-            res = torch.cat([res, y_], dim=0).max(dim=0, keepdim=True)[0].squeeze()
+            # res = torch.cat([res, x_], dim=0).max(dim=0, keepdim=True)[0].squeeze()
             res = self.final_block(res)
             conf = self.filter(ssim_mask.squeeze(), mask) if mask is not None else nn.Sigmoid()((0.5 - self.conf_block(image_rgb)) * ssim_mask.squeeze())
-            return x*conf + res*(1-conf)
+            return res #x*conf + res*(1-conf)
         return inp + self.conv_block(inp)
 
     def filter(self, feat, mask):
