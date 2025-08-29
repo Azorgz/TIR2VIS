@@ -1846,7 +1846,7 @@ class AttnFusionBlock(nn.Module):
         HF = self.CA_HF(HF, seg)
         if p_color is None:
             p_color = torch.zeros([3]).to(x_input.device)
-        z = self.Decoder(LF, HF, p_color[None, :, None, None].expand_as(x_input[:, :3]))
+        z = self.Decoder(torch.cat([LF, HF, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
         return z
 
 
