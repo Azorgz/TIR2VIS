@@ -896,9 +896,9 @@ class GanColorCombo(ComboGANModel):
         encoded_C = self.netG.encode(self.real_C, self.DC)
         self.pedestrian_color = self.pedestrian_color.to(self.real_A.device)
         fake_A_pedestrian_color = self.real_A.clone()
-        pedestrian_mask = (self.SegMask_A.unsqueeze(0) == 11).expand_as(self.real_A)
+        pedestrian_mask = (self.SegMask_A.unsqueeze(0) == 11).expand_as(self.real_A) * self.real_A
         real_A_pedestrian_colored = (pedestrian_mask * self.pedestrian_color[None, :, None, None] +
-                                   fake_A_pedestrian_color * ~pedestrian_mask)
+                                   fake_A_pedestrian_color * (pedestrian_mask == 0))
 
         encoded_BC, self.rec_real_C = self.netG.fusion_features(encoded_B, encoded_C, self.mask, self.real_B,
                                                                 self.real_C, p_color=self.pedestrian_color)
@@ -1191,8 +1191,8 @@ class GanColorCombo(ComboGANModel):
                 if self.cond('EA', 'DC') else self.null
             # self.loss_color += self.criterionColor(self.rec_A_C, self.real_A, self.SegMask_A) * self.lambda_color \
             #     if self.cond('EC', 'DA', 'EA', 'DC') else self.null
-            # self.loss_color += self.criterionColor(self.rec_A_BC, self.real_A, None) * self.lambda_color \
-            #     if self.cond('EC', 'DA', 'EA', 'DC') else self.null
+            self.loss_color += self.criterionColor(self.rec_A_BC, real_A_pedestrian_colored, self.SegMask_A) * self.lambda_color \
+                if self.cond('EC', 'DA', 'EA', 'DC') else self.null
         # if self.epoch > 30:
         #     self.loss_color += self.criterionColor(self.fake_A_C, self.real_C, self.SegMask_B_update,
         #                                            chroma_adjust=True) * self.lambda_color \
