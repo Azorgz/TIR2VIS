@@ -9,9 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from einops import repeat, rearrange
 from kornia.filters import guided_blur
-from torchmetrics.image import StructuralSimilarityIndexMeasure
 from torchvision import models
-from ultralytics import YOLO
 
 from ImagesCameras import ImageTensor
 from ImagesCameras.Metrics import SSIM
@@ -1832,7 +1830,9 @@ class AttnFusionBlock(nn.Module):
         self.CA_HF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=nc))
         self.CA_LF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=nc))
         self.seg_head = SegmentorHeadv2(input_nc=4, n_blocks=4, ngf=64, num_classes=nc)
-        self.Decoder = DE_Decoder(out_dim=dim, in_dim=dim)
+        self.Decoder = nn.Sequential(nn.Conv2d(dim * 2 + 3, dim, kernel_size=1, padding=0, bias=False),
+                                     nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
+                                     nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False))
 
     def forward(self, x_input, y_input, *args, p_color=None):
         mask, image_ir, image_rgb = args
