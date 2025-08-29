@@ -833,7 +833,7 @@ def FakeIRFGMergeMaskv3(vis_segmask, IR_seg_tensor, real_vis, fake_IR, gpu_ids):
     for i in range(len(vis_FG_idx_list)):
 
         #######erode
-        temp_mask_ori = np.zeros_like(vis_GT_flip_segmask)
+
         temp_mask_ori = np.where(vis_GT_flip_segmask == vis_FG_idx_list[i], 1.0, 0.0)
         max_pool_k3 = nn.MaxPool2d(kernel_size=3, stride=1, padding=1)
         temp_mask_erode = -max_pool_k3(-torch.Tensor(temp_mask_ori).unsqueeze(0).unsqueeze(0))
@@ -842,7 +842,7 @@ def FakeIRFGMergeMaskv3(vis_segmask, IR_seg_tensor, real_vis, fake_IR, gpu_ids):
         label_connect, num = measure.label(temp_mask, connectivity=2, background=0, return_num=True)
         for j in range(1, num + 1):
             "Since background index is 0, the num is num+1."
-            temp_connect_mask = np.zeros_like(label_connect)
+
             temp_connect_mask = np.where(label_connect == j, 1.0, 0.0)
             road_mask_prod = temp_connect_mask * IR_road_mask_update
             FG_mask_overlap = temp_connect_mask * IR_FG_mask_update

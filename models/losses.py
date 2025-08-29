@@ -978,7 +978,6 @@ def ColorLoss(image_fake, image_target, GT_seg, chroma_adjust=False):
         tot_mask += sum_mask
         if sum_mask > 0:
             loss = color_loss(im_fake, im_target, mask)
-            # losses.append((loss - loss.min()).sum()/sum_mask)
             losses.append(loss/sum_mask)
         loss_color = torch.log(sum(losses) * tot_mask / (im_fake.shape[-2]*im_fake.shape[-1]) + 1e-10)
     else:

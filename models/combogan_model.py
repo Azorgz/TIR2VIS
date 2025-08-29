@@ -851,7 +851,7 @@ class GanColorCombo(ComboGANModel):
         self.lambda_color = torch.Tensor([opt.lambda_color]).to('cuda')
         self.criterionColor = ColorLoss
         self.criterionObjectColor = ObjectColorLoss
-        self.criterionSaturation = lambda x: torch.mean(((x * 0.5 + 0.5).mean(dim=1) > 0.95) * 1.)
+        self.criterionSaturation = lambda x: torch.sum(nn.ReLU()(x * 0.5 + 0.5).mean(dim=1) - 0.95) / (((x * 0.5 + 0.5).mean(dim=1) - 0.95 > 0).sum() + 1e-6)
         self.simple_train_channel = 0, 1
         self.set_partial_train()
         self.rec_A, self.rec_B, self.rec_C, self.rec_BC = None, None, None, None
@@ -895,6 +895,11 @@ class GanColorCombo(ComboGANModel):
         encoded_B = self.netG.encode(self.real_B, self.DB)
         encoded_C = self.netG.encode(self.real_C, self.DC)
         self.pedestrian_color = self.pedestrian_color.to(self.real_A.device)
+        fake_A_pedestrian_color = self.real_A.clone()
+        pedestrian_mask = (self.SegMask_A.unsqueeze(0) == 11).expand_as(self.real_A)
+        real_A_pedestrian_colored = (pedestrian_mask * self.pedestrian_color[None, :, None, None] +
+                                   fake_A_pedestrian_color * ~pedestrian_mask)
+
         encoded_BC, self.rec_real_C = self.netG.fusion_features(encoded_B, encoded_C, self.mask, self.real_B,
                                                                 self.real_C, p_color=self.pedestrian_color)
 
@@ -1006,7 +1011,7 @@ class GanColorCombo(ComboGANModel):
         rec_encoded_BC_A, _ = self.netG.fusion_features(rec_encoded_A, rec_encoded_A_C, None, self.fake_A,
                                                         self.fake_A_C, p_color=self.pedestrian_color)
         self.rec_A_BC = self.netG.decode(rec_encoded_BC_A, self.DA)
-        self.loss_cycle[self.DA] += loss_cycle(self.rec_A_BC, self.real_A)
+        self.loss_cycle[self.DA] += loss_cycle(self.rec_A_BC, real_A_pedestrian_colored)
         # rec_encoded_B_C = self.netG.encode(self.fake_B_C, self.DB)
         # self.rec_C_B = self.netG.decode(rec_encoded_B_C, self.DC)
         # self.loss_cycle[self.DC] += loss_cycle(self.rec_C_B * self.mask, self.real_C * self.mask) \
@@ -1043,6 +1048,7 @@ class GanColorCombo(ComboGANModel):
         real_A_s = F.interpolate(self.real_A, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
         fake_B_s = F.interpolate(self.fake_B, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
         fake_A_s = F.interpolate(self.fake_A, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
+        fake_A_C_s = F.interpolate(self.fake_A_C, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
         real_B_s = F.interpolate(self.real_B, size=[rand_size_B, rand_size_B], mode='bilinear', align_corners=False)
         self.loss_S_rec = {self.DA: 0., self.DB: 0., self.DC: 0.}
         self.loss_S_enc = {self.DA: 0., self.DB: 0., self.DC: 0.}
@@ -1053,6 +1059,7 @@ class GanColorCombo(ComboGANModel):
             if self.epoch >= 30:  # epoch 30-100
                 # fake_A_s = F.interpolate(self.fake_A, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
                 fake_A_pred_d, _ = self.netS.forward(fake_A_s.detach(), self.DA)
+                fake_A_C_pred_d, _ = self.netS.forward(fake_A_C_s.detach(), self.DA)
                 real_B_pred, _ = self.netS.forward(real_B_s, self.DB)
                 if 40 >= self.epoch:  # epoch 31-40
                     fake_B_pred_d, _ = self.netS.forward(fake_B_s.detach(), self.DB)
@@ -1193,55 +1200,51 @@ class GanColorCombo(ComboGANModel):
         #     self.loss_color += self.criterionColor(self.fake_A_BC, self.rec_real_C.detach(),
         #                                            self.SegMask_B_update) * self.lambda_color \
         #         if self.cond('EC', 'DA', 'EB', 'Fus') else self.null
-            self.loss_color += self.criterionObjectColor(self.rec_A_BC, self.SegMask_A, 'person', self.pedestrian_color)
+        #     self.loss_color += self.criterionObjectColor(self.rec_A_BC, self.SegMask_A, 'person', self.pedestrian_color)
 
             # self.loss_color += self.criterionColor(self.rec_C_A_BC, self.real_C, self.SegMask_B_update) * self.lambda_color
 
         if self.lambda_acl > 0:  # epoch > 40
-            fake_A_Mask = F.interpolate(fake_A_BC_pred_d.expand(1, 19, rand_size, rand_size).float(), size=[256, 256],
-                                        mode='bilinear', align_corners=False)
+            fake_A_Mask = F.interpolate(fake_A_pred_d*2/3 + fake_A_C_pred_d/3, size=[256, 256], mode='bilinear', align_corners=False)
             real_B_Mask = self.SegMask_B_update.detach().expand(1, 19, 256, 256).detach()
             ##########Fake_IR_Composition, OAMix-TIR
             FakeIR_FG_Mask, out_FG_FakeIR, out_FG_RealVis, FakeIR_FG_Mask_flip, out_FG_FakeIR_flip, out_FG_RealVis_flip, FakeIR_FG_Mask_ori, HL_Mask, ComIR_Light_Mask = \
-                self.get_FG_MergeMask(self.SegMask_A.detach(), fake_A_Mask, self.real_A, self.fake_B.detach(),
-                                      self.gpu_ids[0])
+                self.get_FG_MergeMask(self.SegMask_A.detach(), fake_A_Mask, self.real_A, self.fake_B.detach(), self.gpu_ids[0])
             if FakeIR_FG_Mask.sum() + FakeIR_FG_Mask_flip.sum() > 0:
-                FakeNVIS_FG_Mask, out_FG_FakeNVIS, _, FakeNVIS_FG_Mask_flip, out_FG_FakeNVIS_flip, _, FakeNVIS_FG_Mask_ori, HL_Mask, ComNVIS_Light_Mask = \
-                    self.get_FG_MergeMask(self.SegMask_A.detach(), fake_A_Mask, self.real_A, self.fake_C_A.detach(),
-                                          self.gpu_ids[0])
-                self.IR_com = self.get_IR_Com(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, out_FG_FakeIR, out_FG_FakeIR_flip,
-                                              self.real_B.detach(), real_B_Mask, HL_Mask)
-                self.NVIS_com = self.get_IR_Com(FakeNVIS_FG_Mask, FakeNVIS_FG_Mask_flip, out_FG_FakeNVIS,
-                                                out_FG_FakeNVIS_flip,
-                                                self.real_C.detach(), real_B_Mask, HL_Mask)
+                # FakeNVIS_FG_Mask, out_FG_FakeNVIS, _, FakeNVIS_FG_Mask_flip, out_FG_FakeNVIS_flip, _, FakeNVIS_FG_Mask_ori, HL_Mask, ComNVIS_Light_Mask = \
+                #     self.get_FG_MergeMask(self.SegMask_A.detach(), fake_A_Mask, self.real_A, self.fake_C_A.detach(), self.gpu_ids[0])
+                self.IR_com = self.get_IR_Com(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, out_FG_FakeIR,
+                                              out_FG_FakeIR_flip, self.real_B.detach(), real_B_Mask, HL_Mask)
+                # self.NVIS_com = self.get_IR_Com(FakeNVIS_FG_Mask, FakeNVIS_FG_Mask_flip, out_FG_FakeNVIS,
+                #                                 out_FG_FakeNVIS_flip,
+                #                                 self.real_C.detach(), real_B_Mask, HL_Mask)
                 ##########
                 encoded_IR_com = self.netG.encode(self.IR_com, self.DB)
                 self.fake_A_IR_com = self.netG.decode(encoded_IR_com, self.DA)
-                encoded_NVIS_com = self.netG.encode(self.NVIS_com, self.DC)
-                self.fake_A_NVIS_com = self.netG.decode(encoded_NVIS_com, self.DA)
+                # encoded_NVIS_com = self.netG.encode(self.NVIS_com, self.DC)
+                # self.fake_A_NVIS_com = self.netG.decode(encoded_NVIS_com, self.DA)
 
                 if torch.sum(FakeIR_FG_Mask) > 0.0:
-                    loss_ACL_B = (self.criterionPixCon(self.fake_A_IR_com, out_FG_RealVis, FakeIR_FG_Mask,
-                                                       self.opt.ssim_winsize) +
-                                  self.criterionPixCon(self.fake_A_NVIS_com, out_FG_RealVis, FakeNVIS_FG_Mask,
-                                                       self.opt.ssim_winsize))
+                    loss_ACL_B = self.criterionPixCon(self.fake_A_IR_com, out_FG_RealVis, FakeIR_FG_Mask,
+                                                       self.opt.ssim_winsize)
+                                  # self.criterionPixCon(self.fake_A_NVIS_com, out_FG_RealVis, FakeNVIS_FG_Mask,
+                                  #                      self.opt.ssim_winsize))
 
                 else:
                     loss_ACL_B = 0.0
 
                 if torch.sum(FakeIR_FG_Mask_flip) > 0.0:
-                    loss_ACL_B_flip = (
-                            self.criterionPixCon(self.fake_A_IR_com, out_FG_RealVis_flip, FakeIR_FG_Mask_flip,
-                                                 self.opt.ssim_winsize) +
-                            self.criterionPixCon(self.fake_A_NVIS_com, out_FG_RealVis_flip, FakeNVIS_FG_Mask_flip,
-                                                 self.opt.ssim_winsize))
+                    loss_ACL_B_flip = self.criterionPixCon(self.fake_A_IR_com, out_FG_RealVis_flip, FakeIR_FG_Mask_flip,
+                                                 self.opt.ssim_winsize)
+                            # self.criterionPixCon(self.fake_A_NVIS_com, out_FG_RealVis_flip, FakeNVIS_FG_Mask_flip,
+                            #                      self.opt.ssim_winsize))
                 else:
                     loss_ACL_B_flip = 0.0
                 Com_RealVis = out_FG_RealVis + out_FG_RealVis_flip
-                loss_CGR_masked = (self.criterionComIR(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, real_B_Mask,
-                                                       self.IR_com, self.fake_A_IR_com, self.gpu_ids[0]) +
-                                   self.criterionComIR(FakeNVIS_FG_Mask, FakeNVIS_FG_Mask_flip, real_B_Mask,
-                                                       self.NVIS_com, self.fake_A_NVIS_com, self.gpu_ids[0]))
+                loss_CGR_masked = self.criterionComIR(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, real_B_Mask,
+                                                       self.IR_com, self.fake_A_IR_com, self.gpu_ids[0])
+                                   # self.criterionComIR(FakeNVIS_FG_Mask, FakeNVIS_FG_Mask_flip, real_B_Mask,
+                                   #                     self.NVIS_com, self.fake_A_NVIS_com, self.gpu_ids[0]))
             else:
                 self.IR_com = self.NVIS_com = None
                 self.fake_A_IR_com = self.fake_A_NVIS_com = None
@@ -1251,9 +1254,9 @@ class GanColorCombo(ComboGANModel):
             ###Traffic Light Luminance Loss
             loss_tll = self.criterionTLL(self.fake_A_BC, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
             loss_tll += self.criterionTLL(self.fake_A, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
-            loss_tll += self.criterionTLL(self.fake_A_C, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
+            # loss_tll += self.criterionTLL(self.fake_A_C, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
             ####Traffic light color loss
-            loss_TLight_color = self.criterionTLC(self.real_B, self.fake_A_C, real_B_Mask,
+            loss_TLight_color = self.criterionTLC(self.real_B, self.fake_A_BC, real_B_Mask,
                                                   Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
             loss_TLight_color += self.criterionTLC(self.real_B, self.fake_A, real_B_Mask,
                                                    Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
