@@ -11,6 +11,7 @@ from einops import repeat, rearrange
 from kornia.filters import guided_blur
 from torchmetrics.image import StructuralSimilarityIndexMeasure
 from torchvision import models
+from ultralytics import YOLO
 
 from ImagesCameras import ImageTensor
 from ImagesCameras.Metrics import SSIM
@@ -288,6 +289,7 @@ class CatersianGrid(nn.Module):
 
         return grid.to(x)
 
+
 ##### Transformers modules, borrowed from DCEvo
 class BiasFree_LayerNorm(nn.Module):
     def __init__(self, normalized_shape):
@@ -301,7 +303,7 @@ class BiasFree_LayerNorm(nn.Module):
 
     def forward(self, x):
         sigma = x.var(-1, keepdim=True, unbiased=False)
-        return x / torch.sqrt(sigma+1e-5)                  # * self.weight
+        return x / torch.sqrt(sigma + 1e-5)  # * self.weight
 
 
 class WithBias_LayerNorm(nn.Module):
@@ -319,7 +321,7 @@ class WithBias_LayerNorm(nn.Module):
     def forward(self, x):
         mu = x.mean(-1, keepdim=True)
         sigma = x.var(-1, keepdim=True, unbiased=False)
-        return (x - mu) / torch.sqrt(sigma+1e-5)+ self.bias
+        return (x - mu) / torch.sqrt(sigma + 1e-5) + self.bias
 
 
 def to_3d(x):
@@ -348,38 +350,36 @@ class CrossAttention(nn.Module):
         super(CrossAttention, self).__init__()
         self.num_heads = num_heads
         self.temperature = nn.Parameter(torch.ones(num_heads, 1, 1))
-        self.k = nn.Sequential(nn.Upsample(scale_factor=sf, mode='nearest'), # for detfm Upsampling
-                               nn.Conv2d(detdim, fudim, kernel_size=1, stride=1, bias=bias),
+        self.k = nn.Sequential(nn.Conv2d(detdim, fudim, kernel_size=1, stride=1, bias=bias),
                                nn.SiLU(inplace=True),
-                               nn.Conv2d(fudim, fudim, kernel_size=int(sf*2-1), stride=1, padding=sf-1, groups=fudim, bias=bias))
-        self.q = nn.Sequential(nn.Conv2d(fudim, fudim, kernel_size=1, stride=1, bias=bias), # for fufm Downsampling
-                                nn.SiLU(inplace=True),
-                                nn.ReflectionPad2d(1),
-                                nn.Conv2d(fudim, fudim, kernel_size=3, stride=sf, padding=sf-1, groups=fudim, bias=bias),
-                                nn.SiLU(inplace=True),
-                                nn.Conv2d(fudim, fudim, kernel_size=1, stride=1, bias=bias),
-                                nn.SiLU(inplace=True),
-                                nn.ReflectionPad2d(1),
-                                nn.Conv2d(fudim, fudim, kernel_size=3, stride=sf, padding=sf-1, groups=fudim, bias=bias))
-        self.v = nn.Sequential(nn.Conv2d(fudim, fudim, kernel_size=1, stride=1, bias=bias), # for fufm value
-                                nn.SiLU(inplace=True),
-                                nn.ReflectionPad2d(1),
-                                nn.Conv2d(fudim, fudim, kernel_size=3, stride=1, padding=0, groups=fudim, bias=bias))
+                               nn.ReflectionPad2d(sf - 1),
+                               nn.Conv2d(fudim, fudim, kernel_size=3, stride=sf, padding=0, groups=fudim,
+                                         bias=bias),
+                               nn.SiLU(inplace=True),
+                               nn.Conv2d(fudim, fudim, kernel_size=int(sf * 2 - 1), stride=1, padding=sf - 1,
+                                         groups=fudim, bias=bias))
+        self.q = nn.Sequential(nn.Upsample(scale_factor=sf, mode='nearest'),
+                               nn.Conv2d(fudim, fudim, kernel_size=1, stride=1, bias=bias),  # for fufm Upsampling
+                               nn.SiLU(inplace=True),
+                               nn.ReflectionPad2d(1),
+                               nn.Conv2d(fudim, fudim, kernel_size=3, stride=1, padding=0, groups=fudim, bias=bias))
+        self.v = nn.Sequential(nn.Conv2d(fudim, fudim, kernel_size=1, stride=1, bias=bias),  # for fufm value
+                               nn.SiLU(inplace=True),
+                               nn.ReflectionPad2d(1),
+                               nn.Conv2d(fudim, fudim, kernel_size=3, stride=1, padding=0, groups=fudim, bias=bias))
         self.project_out = nn.Conv2d(fudim, fudim, kernel_size=1, bias=bias)
 
     def forward(self, fux, detx):
         b, c, h, w = fux.shape
-        dsh = int(h * 0.25)
-        dsw = int(w * 0.25)
         k = self.k(detx)  # [b,fudim,fuh,fuw]
         q = self.q(fux)
         v = self.v(fux)
         q = rearrange(q, 'b (head c) dsh dsw -> b head c (dsh dsw)',
-                    head=self.num_heads)
+                      head=self.num_heads)
         k = rearrange(k, 'b (head c) dsh dsw -> b head c (dsh dsw)',
-                    head=self.num_heads)
+                      head=self.num_heads)
         v = rearrange(v, 'b (head c) h w -> b head c (h w)',
-                    head=self.num_heads)
+                      head=self.num_heads)
         q = torch.nn.functional.normalize(q, dim=-1)
         k = torch.nn.functional.normalize(k, dim=-1)
         attn = (q @ k.transpose(-2, -1)) * self.temperature
@@ -395,19 +395,20 @@ class prominent(nn.Module):
     def __init__(self, channels=0):
         super(prominent, self).__init__()
         self.act = nn.Sigmoid()
-        self.act2 = nn.SiLU(inplace=True)
+        self.act2 = nn.Sigmoid()
 
     def forward(self, x):
         y = self.act(x)
         return self.act2(x * self.act(y.pow(2) / y.mean(dim=[2, 3], keepdim=True)))
 
+
 class FeedForward(nn.Module):
     def __init__(self, dim, ffn_expansion_factor, bias):
         super(FeedForward, self).__init__()
-        hidden_features = int(dim*ffn_expansion_factor)
-        self.project_in = nn.Conv2d(dim, hidden_features*2, kernel_size=1, bias=bias)
-        self.dwconv = nn.Conv2d(hidden_features*2, hidden_features*2, kernel_size=3,
-                                stride=1, padding=1, groups=hidden_features*2, bias=bias)
+        hidden_features = int(dim * ffn_expansion_factor)
+        self.project_in = nn.Conv2d(dim, hidden_features * 2, kernel_size=1, bias=bias)
+        self.dwconv = nn.Conv2d(hidden_features * 2, hidden_features * 2, kernel_size=3,
+                                stride=1, padding=1, groups=hidden_features * 2, bias=bias)
         self.project_out = nn.Conv2d(hidden_features, dim, kernel_size=1, bias=bias)
 
     def forward(self, x):
@@ -420,13 +421,13 @@ class FeedForward(nn.Module):
 
 class CrossAttentionBlock(nn.Module):
     def __init__(self,
-                dimf=64,
-                dimd=64,
-                num_heads=8,
-                ffn_expansion_factor=2,
-                bias=False,
-                LayerNorm_type='WithBias',
-                sf=1):
+                 dimf=128,
+                 dimd=19,
+                 num_heads=8,
+                 ffn_expansion_factor=2,
+                 bias=False,
+                 LayerNorm_type='WithBias',
+                 sf=2):
         super(CrossAttentionBlock, self).__init__()
 
         self.norm1f = LNorm(dimf, LayerNorm_type)
@@ -436,7 +437,7 @@ class CrossAttentionBlock(nn.Module):
         self.ffn = FeedForward(dimf, ffn_expansion_factor, bias)
         self.pmt = prominent()
         self.selfatt = TransformerBlock(dim=dimf, num_heads=num_heads, ffn_expansion_factor=ffn_expansion_factor,
-                                            bias=bias, LayerNorm_type=LayerNorm_type)
+                                        bias=bias, LayerNorm_type=LayerNorm_type)
 
     def forward(self, fux, detx):
         x = (self.attn(self.norm1f(fux), self.norm1d(detx))) + fux
@@ -450,8 +451,8 @@ class Attention(nn.Module):
         super(Attention, self).__init__()
         self.num_heads = num_heads
         self.temperature = nn.Parameter(torch.ones(num_heads, 1, 1))
-        self.qkv = nn.Conv2d(dim, dim*3, kernel_size=1, bias=bias)
-        self.qkv_dwconv = nn.Conv2d(dim*3, dim*3, kernel_size=3, stride=1, padding=1, groups=dim*3, bias=bias)
+        self.qkv = nn.Conv2d(dim, dim * 3, kernel_size=1, bias=bias)
+        self.qkv_dwconv = nn.Conv2d(dim * 3, dim * 3, kernel_size=3, stride=1, padding=1, groups=dim * 3, bias=bias)
         self.project_out = nn.Conv2d(dim, dim, kernel_size=1, bias=bias)
 
     def forward(self, x):
@@ -459,11 +460,11 @@ class Attention(nn.Module):
         qkv = self.qkv_dwconv(self.qkv(x))
         q, k, v = qkv.chunk(3, dim=1)
         q = rearrange(q, 'b (head c) h w -> b head c (h w)',
-                    head=self.num_heads)
+                      head=self.num_heads)
         k = rearrange(k, 'b (head c) h w -> b head c (h w)',
-                    head=self.num_heads)
+                      head=self.num_heads)
         v = rearrange(v, 'b (head c) h w -> b head c (h w)',
-                    head=self.num_heads)
+                      head=self.num_heads)
 
         q = torch.nn.functional.normalize(q, dim=-1)
         k = torch.nn.functional.normalize(k, dim=-1)
@@ -552,9 +553,9 @@ class DWBlock(nn.Module):
 class DetailNode(nn.Module):
     def __init__(self, dim=64):
         super(DetailNode, self).__init__()
-        self.theta_phi = DWBlock(inp=dim//2, oup=dim//2)
-        self.theta_rho = DWBlock(inp=dim//2, oup=dim//2)
-        self.theta_eta = DWBlock(inp=dim//2, oup=dim//2)
+        self.theta_phi = DWBlock(inp=dim // 2, oup=dim // 2)
+        self.theta_rho = DWBlock(inp=dim // 2, oup=dim // 2)
+        self.theta_eta = DWBlock(inp=dim // 2, oup=dim // 2)
         self.shffleconv = nn.Conv2d(dim, dim, kernel_size=1,
                                     stride=1, padding=0, bias=True)
         self.pmt = simam_module()
@@ -583,6 +584,7 @@ class HighFreqExtractor(nn.Module):
             z1, z2 = layer(z1, z2)
         return torch.cat((z1, z2), dim=1)
 
+
 class C2f(nn.Module):
     def __init__(self, c1, c2, n=2, shortcut=True, g=1, e=0.5, partnum=1):
         super().__init__()
@@ -597,8 +599,10 @@ class C2f(nn.Module):
         y.extend(m(y[-1]) for m in self.m)
         return x + self.att(self.cv2(torch.cat(y, 1)))
 
+
 class Conv(nn.Module):
     default_act = nn.SiLU(inplace=True)  # default activation
+
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
         super().__init__()
         self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p, d), groups=g, dilation=d, bias=False)
@@ -620,6 +624,7 @@ class Bottleneck(nn.Module):
     def forward(self, x):
         return x + (self.cv2(self.cv1(x))) if self.add else (self.cv2(self.cv1(x)))
 
+
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
     if d > 1:
         k = d * (k - 1) + 1 if isinstance(k, int) else [d * (x - 1) + 1 for x in k]  # actual kernel-size
@@ -630,29 +635,28 @@ def autopad(k, p=None, d=1):  # kernel, padding, dilation
 
 class DE_Decoder(nn.Module):
     def __init__(self,
-                out_dim=128,
-                in_dim=128,
-                num_blocks=5,
-                heads=[8, 8, 8],
-                ffn_expansion_factor=2,
-                bias=False,
-                LayerNorm_type='WithBias',
-                ):
-
+                 out_dim=128,
+                 in_dim=128,
+                 num_blocks=5,
+                 heads=[8, 8, 8],
+                 ffn_expansion_factor=2,
+                 bias=False,
+                 LayerNorm_type='WithBias',
+                 ):
         super(DE_Decoder, self).__init__()
-        self.reduce_channel = nn.Conv2d(int(in_dim*2 + 3), int(in_dim), kernel_size=1, bias=bias)
+        self.reduce_channel = nn.Conv2d(int(in_dim * 2 + 3), int(in_dim), kernel_size=1, bias=bias)
         self.encoder_level2 = nn.Sequential(*[LowFreqExtractor(dim=in_dim) for i in range(num_blocks)])
         self.output = nn.Sequential(
             TransformerBlock(dim=in_dim, num_heads=heads[1], ffn_expansion_factor=ffn_expansion_factor,
-            bias=bias, LayerNorm_type=LayerNorm_type),
+                             bias=bias, LayerNorm_type=LayerNorm_type),
             nn.ReflectionPad2d(1),
-            nn.Conv2d(int(in_dim), int(in_dim)//2, kernel_size=3,
-                    stride=1, padding=0, bias=bias),
-            nn.LeakyReLU(),
+            nn.Conv2d(int(in_dim), int(in_dim) // 2, kernel_size=3,
+                      stride=1, padding=0, bias=bias),
+            nn.Identity(),
             nn.ReflectionPad2d(1),
-            nn.Conv2d(int(in_dim)//2, out_dim, kernel_size=3,
-                    stride=1, padding=0, bias=bias),
-            )
+            nn.Conv2d(int(in_dim) // 2, out_dim, kernel_size=3,
+                      stride=1, padding=0, bias=bias),
+        )
         self.act = nn.Identity()
 
     def forward(self, base_feature, detail_feature, pcolor):
@@ -661,6 +665,7 @@ class DE_Decoder(nn.Module):
         base_feature = self.encoder_level2(embedded_feature)
         out = self.output(base_feature)
         return self.act(out)
+
 
 #######################################Positional Encoding############
 
@@ -719,9 +724,11 @@ def define_G(input_nc, output_nc, ngf, net_Gen_type, n_blocks, n_blocks_shared, 
         shared_args = None
 
     if net_Gen_type == 'gen_v1':
-        plex_netG = G_Plexer(n_domains, ResnetGenEncoder, enc_args, ResnetGenDecoderv1, dec_args, SharedBlock, shared_args)
+        plex_netG = G_Plexer(n_domains, ResnetGenEncoder, enc_args, ResnetGenDecoderv1, dec_args, SharedBlock,
+                             shared_args)
     elif net_Gen_type == 'gen_SGPA':
-        plex_netG = G_Plexer(n_domains, ResnetGenEncoderv2, enc_args, ResnetGenDecoderv1, dec_args, SharedBlock, shared_args)
+        plex_netG = G_Plexer(n_domains, ResnetGenEncoderv2, enc_args, ResnetGenDecoderv1, dec_args, SharedBlock,
+                             shared_args)
     else:
         raise NotImplementedError('Generation Net [%s] is not found' % net_Gen_type)
 
@@ -1265,14 +1272,19 @@ class ResnetBlock2(nn.Module):
             x, y = inp
         else:
             x, y = inp, None
-        pedestrian_color = torch.Tensor(p_color).to(x.device) if p_color is not None else torch.Tensor([0., 0., 0.]).to(x.device)
+        pedestrian_color = torch.Tensor(p_color).to(x.device) if p_color is not None else torch.Tensor([0., 0., 0.]).to(
+            x.device)
         if args:
             mask, image_ir, image_rgb = args
             if image_ir is not None and image_rgb is not None:
                 rgb, ir = ImageTensor(image_rgb * 0.5 + 0.5), ImageTensor(image_ir * 0.5 + 0.5)
-                ssim_mask_common = self.ssim(ir, rgb, return_image=True).mean(dim=1, keepdim=True)#.mean_shift()
-                ssim_mask_rgb = 1-self.ssim(rgb, torch.ones_like(rgb).to(rgb.device)*rgb.max(), return_image=True).mean(dim=1, keepdim=True)#.mean_shift(nn.Sigmoid()(self.weightRGB))
-                ssim_mask_ir = 1-self.ssim(ir, torch.ones_like(rgb).to(rgb.device)*ir.max(), return_image=True).mean(dim=1, keepdim=True)#.mean_shift(1-nn.Sigmoid()(self.weightRGB))
+                ssim_mask_common = self.ssim(ir, rgb, return_image=True).mean(dim=1, keepdim=True)  #.mean_shift()
+                ssim_mask_rgb = 1 - self.ssim(rgb, torch.ones_like(rgb).to(rgb.device) * rgb.max(),
+                                              return_image=True).mean(dim=1,
+                                                                      keepdim=True)  #.mean_shift(nn.Sigmoid()(self.weightRGB))
+                ssim_mask_ir = 1 - self.ssim(ir, torch.ones_like(rgb).to(rgb.device) * ir.max(),
+                                             return_image=True).mean(dim=1,
+                                                                     keepdim=True)  #.mean_shift(1-nn.Sigmoid()(self.weightRGB))
                 ssim_mask = - (ssim_mask_ir - ssim_mask_rgb) * ssim_mask_common
                 ssim_mask_full = ImageTensor((ssim_mask - ssim_mask.min()) / (ssim_mask.max() - ssim_mask.min() + 1e-6))
                 ssim_mask = ssim_mask_full.resize(x.shape[-2:])
@@ -1288,7 +1300,7 @@ class ResnetBlock2(nn.Module):
             x_ = self.conv_block(x)
             conf = self.filter(ssim_mask.squeeze(), mask) if mask is not None else ssim_mask.squeeze()
             y_ = y_ * conf
-            x_ = x_ * (1-conf)
+            x_ = x_ * (1 - conf)
             p_color_layer = pedestrian_color[None, :, None, None].expand([b, 3, h, w])
             xy_ = torch.cat([x_, y_, p_color_layer], dim=1)
             res = self.fus_conv(xy_.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
@@ -1759,14 +1771,14 @@ class NLayerDiscriminatorSN(nn.Module):
 
 # Defines the SegmentorHeadv2. Zero Padding and CSG for positional encoding.
 class SegmentorHeadv2(nn.Module):
-    def __init__(self, input_nc, n_blocks=4, ngf=64, num_classes=19, norm_layer=nn.BatchNorm2d,
+    def __init__(self, input_nc=3, n_blocks=4, ngf=64, num_classes=19, norm_layer=nn.BatchNorm2d,
                  use_dropout=False, gpu_ids=[], use_bias=False, padding_type='zero'):
         super(SegmentorHeadv2, self).__init__()
         assert (n_blocks >= 0)
         self.gpu_ids = gpu_ids
 
         model = [nn.ReflectionPad2d(3),
-                 nn.Conv2d(5, ngf, kernel_size=7, padding=0,
+                 nn.Conv2d(input_nc + 2, ngf, kernel_size=7, padding=0,
                            bias=use_bias),
                  norm_layer(ngf),
                  nn.PReLU()]
@@ -1810,27 +1822,33 @@ class SegmentorHeadv2(nn.Module):
 
 
 class AttnFusionBlock(nn.Module):
-    def __init__(self, dim=128):
+    def __init__(self, dim=128, nc=19):
         super(AttnFusionBlock, self).__init__()
+        self.shuffle_ir = nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False)
+        self.shuffle_rgb = nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False)
+        self.conv_combination = nn.Conv2d(dim * 2, dim, kernel_size=1, padding=0, bias=False)
         self.LFExtractor = nn.DataParallel(LowFreqExtractor(dim=dim))
         self.HFExtractor = nn.DataParallel(HighFreqExtractor(num_layers=3, dim=dim))
-        self.CA_HF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=dim))
-        self.CA_LF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=dim))
+        self.CA_HF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=nc))
+        self.CA_LF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=nc))
+        self.seg_head = SegmentorHeadv2(input_nc=4, n_blocks=4, ngf=64, num_classes=nc)
         self.Decoder = DE_Decoder(out_dim=dim, in_dim=dim)
 
     def forward(self, x_input, y_input, *args, p_color=None):
-        LF_x = self.LFExtractor(x_input)
-        LF_y = self.LFExtractor(y_input)
-        HF_x = self.HFExtractor(x_input)
-        HF_y = self.HFExtractor(y_input)
-        LF_xy = self.CA_LF(LF_x, LF_y)
-        HF_xy = self.CA_HF(HF_x, HF_y)
-        # LF_xy = (self.CA_LF(LF_x, LF_y) + LF_x) / 2
-        # HF_xy = (self.CA_HF(HF_x, HF_y) + HF_x) / 2
+        mask, image_ir, image_rgb = args
+        x = self.shuffle_ir(x_input)
+        y = self.shuffle_rgb(y_input)
+        xy = self.conv_combination(torch.cat([x, y], dim=1))
+        LF = self.LFExtractor(xy)
+        HF = self.HFExtractor(xy)
+        seg = self.seg_head(torch.cat([image_ir.mean(dim=1, keepdim=True), image_rgb], dim=1))[0]
+        LF = self.CA_LF(LF, seg)
+        HF = self.CA_HF(HF, seg)
         if p_color is None:
             p_color = torch.zeros([3]).to(x_input.device)
-        z = self.Decoder(LF_xy, HF_xy, p_color[None, :, None, None].expand_as(x_input[:, :3]))
+        z = self.Decoder(LF, HF, p_color[None, :, None, None].expand_as(x_input[:, :3]))
         return z
+
 
 #### PLEXERS
 class Plexer(nn.Module):
@@ -1905,8 +1923,8 @@ class G_Plexer(Plexer):
 
         self.sharing = block is not None
         if self.sharing:
-            self.shared_encoder = nn.Sequential(*[block(*shenc_args[1:])]*shenc_args[0])
-            self.shared_decoder = nn.Sequential(*[block(*shenc_args[1:])]*shenc_args[0])
+            self.shared_encoder = nn.Sequential(*[block(*shenc_args[1:])] * shenc_args[0])
+            self.shared_decoder = nn.Sequential(*[block(*shenc_args[1:])] * shenc_args[0])
             self.encoders.append(self.shared_encoder)
             self.decoders.append(self.shared_decoder)
         self.networks = self.encoders + self.decoders
@@ -1961,7 +1979,7 @@ class Color_G_Plexer(G_Plexer):
         concat_args = (256, 4, self.enc_args[3], self.enc_args[4], self.enc_args[6])
         self.spatialTransformer = SpatialCorrectionBlock()
         self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
-        # self.feature_concatenation = AttnFusionBlock(dim=256)
+        self.feature_concatenation = AttnFusionBlock(dim=256)
         self.networks.append(self.feature_concatenation)
         self.init_optimizers(opt, lr, betas)
 
@@ -1974,7 +1992,7 @@ class Color_G_Plexer(G_Plexer):
         self.optimizers.append(opt(self.feature_concatenation.parameters(), lr=lr, betas=betas))
 
     def train(self, *args, mode: bool = True):
-        super(Color_G_Plexer, self).train(mode=mode)
+        # super(Color_G_Plexer, self).train(mode=mode)
         for net in self.networks:
             net.train(mode=False)
         for arg in args:
@@ -2089,7 +2107,7 @@ class SequentialContext(nn.Sequential):
         if self.context_var is None or self.context_var.size()[-2:] != input.size()[-2:]:
             tensor = torch.cuda.FloatTensor if isinstance(input.data, torch.cuda.FloatTensor) \
                 else torch.FloatTensor
-            self.context_var = tensor(*(1, self.n_classes,  input.shape[-2:]))
+            self.context_var = tensor(*(1, self.n_classes, input.shape[-2:]))
 
         self.context_var.data.fill_(-1.0)
         self.context_var.data[:, domain, :, :] = 1.0
