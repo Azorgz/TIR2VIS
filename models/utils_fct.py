@@ -1516,7 +1516,7 @@ def create_fake_TLight(img, mask_p):
     MaxPool_k5 = nn.MaxPool2d(5, stride=1, padding=padsize)
     for i in range(2):
         img_processed = MaxPool_k5(img_processed)
-        img_processed = gaussian_blur(img_processed / (img_processed.max() + 1e-14), (11, 11), (5., 5.))
+        img_processed = gaussian_blur(img_processed / (img_processed.max() + 1e-14), (5, 5), (1.6, 1.6))
     img_processed = (img_processed / (img_processed.max() + 1e-14) + TLight_region*0.1).clamp(0, 1)
     fake = torch.zeros_like(img_processed).to(img.device)
     label_connect, num = measure.label((img_processed.mean(dim=1)>img_processed.mean() + img_processed.std()).cpu(), connectivity=2, background=0, return_num=True)
@@ -1531,10 +1531,10 @@ def create_fake_TLight(img, mask_p):
         # patch_overlap_neg = (1 - patch_overlap) * (patch_overlap>0)
         if patch_mean[0] - 1.5 * patch_mean[2] > 0:  # if red
             light_i = patch_overlap * light_i_ * 3
-            light_i = light_i.clamp(0, 1)
+            light_i = light_i.clamp(light_i_.min(), 1)
         elif patch_mean[2] - 1.5 * patch_mean[0] > 0:  # if green
             light_i = patch_overlap * light_i_ * 3
-            light_i = light_i.clamp(0, 1)
+            light_i = light_i.clamp(light_i_.min(), 1)
         else:
             light_i = 0
         fake += light_i
