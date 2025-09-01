@@ -1910,7 +1910,7 @@ class Plexer(nn.Module):
             if isfile(filename):
                 dic = torch.load(filename)
                 if 'G6' in filename:
-                    dic = {k: (v if 'weight.0.weight' not in k else torch.rand([1, 3, 6, 6])) for k, v in dic.items()}
+                    dic['weight'] = torch.tensor(0.)
                 net.load_state_dict(dic)
 
 
