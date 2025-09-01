@@ -1205,6 +1205,7 @@ class GanColorCombo(ComboGANModel):
             # self.loss_color += self.criterionColor(self.rec_C_A_BC, self.real_C, self.SegMask_B_update) * self.lambda_color
 
         if self.lambda_acl > 0:  # epoch > 40
+            loss_ACL_B = loss_ACL_B_flip = 0.0
             fake_A_Mask = F.interpolate(fake_A_pred_d*2/3 + fake_A_C_pred_d/3, size=[256, 256], mode='bilinear', align_corners=False)
             real_B_Mask = self.SegMask_B_update.detach().expand(1, 19, 256, 256).detach()
             ##########Fake_IR_Composition, OAMix-TIR
@@ -1212,7 +1213,7 @@ class GanColorCombo(ComboGANModel):
                 self.get_FG_MergeMask(self.SegMask_A.detach(), fake_A_Mask, self.real_A, self.fake_B.detach(), self.gpu_ids[0])
             if FakeIR_FG_Mask.sum() + FakeIR_FG_Mask_flip.sum() > 0:
                 # FakeNVIS_FG_Mask, out_FG_FakeNVIS, _, FakeNVIS_FG_Mask_flip, out_FG_FakeNVIS_flip, _, FakeNVIS_FG_Mask_ori, HL_Mask, ComNVIS_Light_Mask = \
-                #     self.get_FG_MergeMask(self.SegMask_A.detach(), fake_A_Mask, self.real_A, self.fake_C_A.detach(), self.gpu_ids[0])
+                #     self.get_FG_MergeMask(self.SegMask_A.detach(), fake_A_Mask, self.real_A, self.real_A, self.gpu_ids[0])
                 self.IR_com = self.get_IR_Com(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, out_FG_FakeIR,
                                               out_FG_FakeIR_flip, self.real_B.detach(), real_B_Mask, HL_Mask)
                 # self.NVIS_com = self.get_IR_Com(FakeNVIS_FG_Mask, FakeNVIS_FG_Mask_flip, out_FG_FakeNVIS,
@@ -1230,27 +1231,17 @@ class GanColorCombo(ComboGANModel):
                                   # self.criterionPixCon(self.fake_A_NVIS_com, out_FG_RealVis, FakeNVIS_FG_Mask,
                                   #                      self.opt.ssim_winsize))
 
-                else:
-                    loss_ACL_B = 0.0
-
                 if torch.sum(FakeIR_FG_Mask_flip) > 0.0:
                     loss_ACL_B_flip = self.criterionPixCon(self.fake_A_IR_com, out_FG_RealVis_flip, FakeIR_FG_Mask_flip,
                                                  self.opt.ssim_winsize)
                             # self.criterionPixCon(self.fake_A_NVIS_com, out_FG_RealVis_flip, FakeNVIS_FG_Mask_flip,
                             #                      self.opt.ssim_winsize))
-                else:
-                    loss_ACL_B_flip = 0.0
-                Com_RealVis = out_FG_RealVis + out_FG_RealVis_flip
-                loss_CGR_masked = self.criterionComIR(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, real_B_Mask,
-                                                       self.IR_com, self.fake_A_IR_com, self.gpu_ids[0])
-                                   # self.criterionComIR(FakeNVIS_FG_Mask, FakeNVIS_FG_Mask_flip, real_B_Mask,
-                                   #                     self.NVIS_com, self.fake_A_NVIS_com, self.gpu_ids[0]))
             else:
                 self.IR_com = self.NVIS_com = None
                 self.fake_A_IR_com = self.fake_A_NVIS_com = None
-                Com_RealVis = torch.zeros_like(out_FG_RealVis)
                 loss_ACL_B_flip = loss_ACL_B = loss_CGR_masked = 0.0
 
+            Com_RealVis = out_FG_RealVis + out_FG_RealVis_flip
             ###Traffic Light Luminance Loss
             loss_tll = self.criterionTLL(self.fake_A_BC, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
             loss_tll += self.criterionTLL(self.fake_A, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
@@ -1269,8 +1260,8 @@ class GanColorCombo(ComboGANModel):
             FakeVis_FG_Mask, FakeVis_FG_Mask_flip, _ = self.get_FG_MergeMaskVis(fake_A_Mask, self.SegMask_A.detach(),
                                                                                 self.gpu_ids[0])
             self.Vis_com = ((1 - FakeVis_FG_Mask - FakeVis_FG_Mask_flip).mul(self.real_A) +
-                            FakeVis_FG_Mask.mul(self.fake_A_BC) +
-                            FakeVis_FG_Mask_flip.mul(torch.flip(self.fake_A_BC.detach(), dims=[3]))) \
+                            FakeVis_FG_Mask.mul(self.fake_A) +
+                            FakeVis_FG_Mask_flip.mul(torch.flip(self.fake_A.detach(), dims=[3]))) \
                 if FakeVis_FG_Mask.sum() + FakeVis_FG_Mask_flip.sum() > 0 else None
             ###########
             if self.Vis_com is not None:

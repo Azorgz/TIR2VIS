@@ -1833,7 +1833,8 @@ class AttnFusionBlock(nn.Module):
         self.Decoder = nn.Sequential(nn.Conv2d(dim * 2 + 3, dim, kernel_size=1, padding=0, bias=False),
                                      nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
                                      nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
-                                     nn.Sigmoid())
+                                     nn.Tanh())
+        self.weight = nn.Parameter(torch.tensor(0.))
 
     def forward(self, x_input, y_input, *args, p_color=None):
         mask, image_ir, image_rgb = args
@@ -1848,7 +1849,7 @@ class AttnFusionBlock(nn.Module):
         if p_color is None:
             p_color = torch.zeros([3]).to(x_input.device)
         z = self.Decoder(torch.cat([LF, HF, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
-        return x + z*y
+        return x + z*y * (self.weight**2 + 0.1)
 
 
 #### PLEXERS
@@ -1908,8 +1909,8 @@ class Plexer(nn.Module):
             filename = path + f'{i}.pth'
             if isfile(filename):
                 dic = torch.load(filename)
-                # if 'G6' in filename:
-                #     dic = {k: (v if 'conf_block.0.weight' not in k else torch.rand([1, 3, 6, 6])) for k, v in dic.items()}
+                if 'G6' in filename:
+                    dic = {k: (v if 'weight.0.weight' not in k else torch.rand([1, 3, 6, 6])) for k, v in dic.items()}
                 net.load_state_dict(dic)
 
 
@@ -1979,7 +1980,7 @@ class Color_G_Plexer(G_Plexer):
         betas = optimizers.param_groups[0]['betas']
         concat_args = (256, 4, self.enc_args[3], self.enc_args[4], self.enc_args[6])
         self.spatialTransformer = SpatialCorrectionBlock()
-        self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
+        # self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
         self.feature_concatenation = AttnFusionBlock(dim=256)
         self.networks.append(self.feature_concatenation)
         self.init_optimizers(opt, lr, betas)
