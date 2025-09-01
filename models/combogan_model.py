@@ -1224,6 +1224,8 @@ class GanColorCombo(ComboGANModel):
                 self.fake_A_IR_com = self.netG.decode(encoded_IR_com, self.DA)
                 # encoded_NVIS_com = self.netG.encode(self.NVIS_com, self.DC)
                 # self.fake_A_NVIS_com = self.netG.decode(encoded_NVIS_com, self.DA)
+                loss_CGR_masked = self.criterionComIR(FakeIR_FG_Mask, FakeIR_FG_Mask_flip, real_B_Mask,
+                                    self.IR_com, self.fake_A_IR_com, self.gpu_ids[0])
 
                 if torch.sum(FakeIR_FG_Mask) > 0.0:
                     loss_ACL_B = self.criterionPixCon(self.fake_A_IR_com, out_FG_RealVis, FakeIR_FG_Mask,
@@ -1236,6 +1238,7 @@ class GanColorCombo(ComboGANModel):
                                                  self.opt.ssim_winsize)
                             # self.criterionPixCon(self.fake_A_NVIS_com, out_FG_RealVis_flip, FakeNVIS_FG_Mask_flip,
                             #                      self.opt.ssim_winsize))
+
             else:
                 self.IR_com = self.NVIS_com = None
                 self.fake_A_IR_com = self.fake_A_NVIS_com = None
@@ -1253,11 +1256,7 @@ class GanColorCombo(ComboGANModel):
                                                    Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
             loss_TLight_appe = loss_tll + loss_TLight_color
             ####Appearance consistency loss of domain B
-            self.loss_AC[self.DB] = loss_ACL_B + loss_ACL_B_flip + self.criterionComIR(FakeIR_FG_Mask,
-                                                                                       FakeIR_FG_Mask_flip,
-                                                                                       real_B_Mask,
-                                                                                       self.IR_com, self.fake_A_IR_com,
-                                                                                       self.gpu_ids[0])
+            self.loss_AC[self.DB] = loss_ACL_B + loss_ACL_B_flip + loss_CGR_masked
             ########################
 
             ##########Fake_Vis_Composition, OAMix-Vis
