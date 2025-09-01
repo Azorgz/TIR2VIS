@@ -1540,7 +1540,7 @@ def create_fake_TLight(img, mask_p):
         fake += light_i
     fake = fake/(fake.max() + 1e-6)
     mask = (fake.sum(dim=1, keepdim=True) - TLight_region.sum(dim=1, keepdim=True) > 0).expand_as(fake)
-    return fake * mask + TLight_region.mean(dim=1, keepdim=True).expand_as(fake) * mask
+    return fake * mask + TLight_region.mean(dim=1, keepdim=True)[TLight_region > 0].min() * mask
 
 
 def create_fake_Light(img, mask_p):
