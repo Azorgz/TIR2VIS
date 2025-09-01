@@ -1191,8 +1191,8 @@ class GanColorCombo(ComboGANModel):
                 if self.cond('EA', 'DC') else self.null
             # self.loss_color += self.criterionColor(self.rec_A_C, self.real_A, self.SegMask_A) * self.lambda_color \
             #     if self.cond('EC', 'DA', 'EA', 'DC') else self.null
-            self.loss_color += self.criterionColor(self.rec_A_BC, real_A_pedestrian_colored, self.SegMask_A) * self.lambda_color \
-                if self.cond('EC', 'DA', 'EA', 'DC') else self.null
+            # self.loss_color += self.criterionColor(self.rec_A_BC, real_A_pedestrian_colored, self.SegMask_A) * self.lambda_color \
+            #     if self.cond('EC', 'DA', 'EA', 'DC') else self.null
         # if self.epoch > 30:
         #     self.loss_color += self.criterionColor(self.fake_A_C, self.real_C, self.SegMask_B_update,
         #                                            chroma_adjust=True) * self.lambda_color \
