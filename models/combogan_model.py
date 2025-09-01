@@ -1253,7 +1253,11 @@ class GanColorCombo(ComboGANModel):
                                                    Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
             loss_TLight_appe = loss_tll + loss_TLight_color
             ####Appearance consistency loss of domain B
-            self.loss_AC[self.DB] = loss_ACL_B + loss_ACL_B_flip + loss_CGR_masked
+            self.loss_AC[self.DB] = loss_ACL_B + loss_ACL_B_flip + self.criterionComIR(FakeIR_FG_Mask,
+                                                                                       FakeIR_FG_Mask_flip,
+                                                                                       real_B_Mask,
+                                                                                       self.IR_com, self.fake_A_IR_com,
+                                                                                       self.gpu_ids[0])
             ########################
 
             ##########Fake_Vis_Composition, OAMix-Vis
