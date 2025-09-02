@@ -1533,10 +1533,10 @@ def create_fake_TLight(img, img_fake, mask_p):
         # patch_overlap_neg = (1 - patch_overlap) * (patch_overlap>0)
         if patch_mean[0] - 1.5 * patch_mean[2] > 0:  # if red
             light_i = patch_overlap * light_i_ * 3
-            light_i = light_i.clamp(fake_TLight_region_i.mean(dim=1).min(), 1)
+            light_i = light_i.clamp(int(fake_TLight_region_i.mean(dim=1).min().cpu()), 1)
         elif patch_mean[2] - 1.5 * patch_mean[0] > 0:  # if green
             light_i = patch_overlap * light_i_ * 3
-            light_i = light_i.clamp(fake_TLight_region_i.mean(dim=1).min(), 1)
+            light_i = light_i.clamp(int(fake_TLight_region_i.mean(dim=1).min().cpu()), 1)
         else:
             light_i = 0
         fake += light_i
