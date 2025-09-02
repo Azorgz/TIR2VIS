@@ -1251,14 +1251,12 @@ class ResnetBlock2(nn.Module):
             p = 1
         else:
             raise NotImplementedError('padding [%s] is not implemented' % padding_type)
-        conv_block += [nn.Conv2d(dim + n_domains, dim, kernel_size=3, padding=p, bias=use_bias),
-                       norm_layer(dim)]
+        conv_block += [nn.Conv2d(dim + n_domains, dim, kernel_size=3, padding=p, bias=use_bias)]
 
         self.conv_block = SequentialContext(n_domains, *conv_block)
         self.fus_conv = nn.Sequential(nn.Linear(2 * dim + 3, 2 * dim, bias=use_bias),
                                       nn.Linear(2 * dim, dim, bias=use_bias))
-        self.final_block = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=3, padding=1, bias=use_bias),
-                                         norm_layer(dim))
+        self.final_block = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=3, padding=1, bias=use_bias))
         self.conf_block = nn.Sequential(SNConv2d(3, 1, kernel_size=6, padding=1, stride=4, bias=use_bias),
                                         nn.InstanceNorm2d(1, affine=True),
                                         nn.Sigmoid())
@@ -1296,14 +1294,14 @@ class ResnetBlock2(nn.Module):
             b, c, h, w = x.shape
             y_ = self.conv_block(y)
             x_ = self.conv_block(x)
-            conf = self.filter(ssim_mask.squeeze(), mask) if mask is not None else ssim_mask.squeeze()
-            y_ = y_ * conf
-            x_ = x_ * (1 - conf)
+            # conf = self.filter(ssim_mask.squeeze(), mask) if mask is not None else ssim_mask.squeeze()
+            # y_ = y_ * conf
+            # x_ = x_ * (1 - conf)
             p_color_layer = pedestrian_color[None, :, None, None].expand([b, 3, h, w])
             xy_ = torch.cat([x_, y_, p_color_layer], dim=1)
             res = self.fus_conv(xy_.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
             res = self.final_block(res)
-            return (x + res) / 2
+            return x + res
         return inp + self.conv_block(inp)
 
     def filter(self, feat, mask):
