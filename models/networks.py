@@ -12,7 +12,7 @@ from kornia.filters import guided_blur
 from torchvision import models
 
 from ImagesCameras import ImageTensor
-from ImagesCameras.Metrics import SSIM
+from ImagesCameras.ImagesCameras.Metrics import SSIM
 from models.utils_fct import get_norm_layer, weights_init, power_iteration
 from thirdParty.CrossModalFlow.flow_utils import backwarp_tensor
 from thirdParty.CrossModalFlow.run_model import run_tensor
@@ -1302,8 +1302,8 @@ class ResnetBlock2(nn.Module):
             p_color_layer = pedestrian_color[None, :, None, None].expand([b, 3, h, w])
             xy_ = torch.cat([x_, y_, p_color_layer], dim=1)
             res = self.fus_conv(xy_.permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
-            res = nn.Tanh()(self.final_block(res))
-            return (x_ + y_) / 2 + res
+            res = self.final_block(res)
+            return (x + res) / 2
         return inp + self.conv_block(inp)
 
     def filter(self, feat, mask):
@@ -1980,8 +1980,8 @@ class Color_G_Plexer(G_Plexer):
         betas = optimizers.param_groups[0]['betas']
         concat_args = (256, 4, self.enc_args[3], self.enc_args[4], self.enc_args[6])
         self.spatialTransformer = SpatialCorrectionBlock()
-        # self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
-        self.feature_concatenation = AttnFusionBlock(dim=256)
+        self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
+        # self.feature_concatenation = AttnFusionBlock(dim=256)
         self.networks.append(self.feature_concatenation)
         self.init_optimizers(opt, lr, betas)
 

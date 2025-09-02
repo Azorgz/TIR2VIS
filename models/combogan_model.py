@@ -11,7 +11,7 @@ from torchvision.transforms.v2.functional import gaussian_blur
 
 import util.util as util
 from ImagesCameras import ImageTensor
-from ImagesCameras.Metrics import NEC
+from ImagesCameras.ImagesCameras.Metrics import NEC
 from util.image_pool import ImagePool
 from .base_model import BaseModel
 from . import networks
@@ -1144,7 +1144,7 @@ class GanColorCombo(ComboGANModel):
                 self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
                 seg_loss_A = self.update_class_criterion(self.SegMask_A_update.long())
                 self.loss_S_rec[self.DB] = self.lambda_sc * seg_loss_A(fake_B_pred, self.SegMask_A_update.long())
-                self.SegMask_B_update = self.UpdateIRGTv2(real_B_pred.detach(), fake_A_BC_pred_d,
+                self.SegMask_B_update = self.UpdateIRGTv2(real_B_pred.detach(), fake_A_pred_d,
                                                           SegMask_B_s[0].long(), real_B_s, self.IR_prob_th)
                 SegMask_B_update2 = F.interpolate(self.SegMask_B_update.expand(1, 1, 256, 256).float(),
                                                   size=[rand_size, rand_size], mode='nearest')
@@ -1474,9 +1474,8 @@ class GanColorCombo(ComboGANModel):
         self.loss_tv[self.DB] = self.lambda_tv * self.criterionTV(self.fake_B)
 
         self.loss_color = self.lambda_color * self.criterionColor(self.rec_A, self.real_A, None)
-        if self.DB == 2:
-            self.loss_color += self.lambda_color * self.criterionColor(self.fake_B, self.real_A, self.SegMask_A)
-            self.loss_color += self.lambda_color * self.criterionColor(self.rec_B, self.real_B, None)
+        self.loss_color += self.lambda_color * self.criterionColor(self.fake_B, self.real_A, self.SegMask_A)
+            # self.loss_color += self.lambda_color * self.criterionColor(self.rec_B, self.real_B, None)
 
         # Optional semantic consistency loss on encoded and rec_encoded features, added by lfy
         "Random size for segmentation network training. Then, retain original image size."
@@ -1568,6 +1567,8 @@ class GanColorCombo(ComboGANModel):
                                                   size=[rand_size, rand_size], mode='nearest')
                 seg_loss_B = self.update_class_criterion(SegMask_B_update2[0].long())
                 self.loss_S_rec[self.DB] = self.lambda_sc * seg_loss_B(fake_A_pred, SegMask_B_update2[0].long())
+
+        self.SegMask_B_update = F.interpolate(self.SegMask_B_update[None].float(), size=[256, 256], mode='nearest')
 
         # Optional Scale Robustness Loss on generated fake images, added by lfy
         if self.DB_GT_update_idx > 0.0:
@@ -1707,7 +1708,7 @@ class GanColorCombo(ComboGANModel):
 
         if self.netS_freezing_idx == 1.0:
             ###Conditional Gradient Repair loss
-            loss_cgr = self.criterionCGR(self.fake_A, self.SegMask_B_update[None].detach(), self.real_B.detach(),
+            loss_cgr = self.criterionCGR(self.fake_A, self.SegMask_B_update.detach(), self.real_B.detach(),
                                          self.gpu_ids[0])
             ########Domain-specific losses include CGR loss and ACA loss.
             self.loss_DS[self.DB] = self.lambda_CGR * loss_cgr
@@ -1859,7 +1860,7 @@ class GanColorCombo(ComboGANModel):
                 # self.DB = i
                 # self.simple_train_channel = 0, i
                 # self.set_partial_train()
-                input_B = input['Fus']
+                input_B = input['C']
                 self.DB = 1
                 self.simple_train_channel = 0, 1
                 self.set_partial_train()
