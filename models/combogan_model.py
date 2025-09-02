@@ -900,7 +900,7 @@ class GanColorCombo(ComboGANModel):
         real_A_pedestrian_colored = (pedestrian_mask * self.pedestrian_color[None, :, None, None] +
                                    fake_A_pedestrian_color * (pedestrian_mask == 0))
 
-        encoded_BC, self.rec_real_C = self.netG.fusion_features(encoded_B, encoded_C, self.mask, self.real_B,
+        encoded_BC, _, self.rec_real_C = self.netG.fusion_features(encoded_B, encoded_C, self.mask, self.real_B,
                                                                 self.real_C, p_color=self.pedestrian_color)
 
         encoded_A = encoded_A.detach() if not self.cond('EA') else encoded_A
@@ -1008,8 +1008,8 @@ class GanColorCombo(ComboGANModel):
         self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A, self.real_C) \
             if self.cond('EC', 'DC', 'EA', 'DA') else self.null
 
-        rec_encoded_BC_A, _ = self.netG.fusion_features(rec_encoded_A, rec_encoded_A_C, None, self.fake_A,
-                                                        self.fake_A_C, p_color=self.pedestrian_color)
+        rec_encoded_BC_A, seg, _ = self.netG.fusion_features(rec_encoded_A, rec_encoded_A_C, None, self.fake_A,
+                                                             self.fake_A_C, p_color=self.pedestrian_color)
         self.rec_A_BC = self.netG.decode(rec_encoded_BC_A, self.DA)
         self.loss_cycle[self.DA] += loss_cycle(self.rec_A_BC, real_A_pedestrian_colored)
         # rec_encoded_B_C = self.netG.encode(self.fake_B_C, self.DB)
@@ -1094,6 +1094,7 @@ class GanColorCombo(ComboGANModel):
                 if self.cond('A', dom='S') and self.lambda_sc != 0:
                     seg_loss = self.update_class_criterion(SegMask_A_s[0].long())
                     self.loss_S_enc[self.DA] += self.lambda_sc * seg_loss(real_A_pred, SegMask_A_s[0].long())
+                    self.loss_S_enc[self.DC] += 0.5 * self.lambda_sc * seg_loss(seg, SegMask_A_s[0].long())
                 self.SegMask_A_update = SegMask_A_s[0].long().detach()
                 self.SegMask_B_update = 255 * torch.ones_like(SegMask_A_s[0].long())
             else:

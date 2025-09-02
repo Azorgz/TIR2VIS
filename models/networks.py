@@ -1847,7 +1847,7 @@ class AttnFusionBlock(nn.Module):
         if p_color is None:
             p_color = torch.zeros([3]).to(x_input.device)
         z = self.Decoder(torch.cat([LF, HF, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
-        return x + z*y * (self.weight**2 + 0.1)
+        return x + z*y * (self.weight**2 + 0.1), seg
 
 
 #### PLEXERS
@@ -1978,8 +1978,8 @@ class Color_G_Plexer(G_Plexer):
         betas = optimizers.param_groups[0]['betas']
         concat_args = (256, 4, self.enc_args[3], self.enc_args[4], self.enc_args[6])
         self.spatialTransformer = SpatialCorrectionBlock()
-        self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
-        # self.feature_concatenation = AttnFusionBlock(dim=256)
+        # self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
+        self.feature_concatenation = AttnFusionBlock(dim=256)
         self.networks.append(self.feature_concatenation)
         self.init_optimizers(opt, lr, betas)
 
@@ -2023,7 +2023,7 @@ class Color_G_Plexer(G_Plexer):
             mask, image_ir, image_rgb = None, None, None
         if image_ir is not None and image_rgb is not None:
             featRGB, rgb_rec = self.spatialTransformer(image_ir, image_rgb, featRGB)
-        return self.feature_concatenation(featIR, featRGB, *args, p_color=p_color), rgb_rec
+        return *self.feature_concatenation(featIR, featRGB, *args, p_color=p_color), rgb_rec
 
 
 class D_Plexer(Plexer):
