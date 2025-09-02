@@ -1505,8 +1505,9 @@ def get_light_color(img_ref, img_test, pos, radius):
     return color
 
 
-def create_fake_TLight(img, mask_p):
+def create_fake_TLight(img, img_fake, mask_p):
     TLight_region = mask_p.mul(img)
+    fake_TLight_region = mask_p.mul(img_fake)
     img_processed = TLight_region ** 7
     m = TLight_region.std(dim=1, keepdim=True) > (
                 (TLight_region > 0) * TLight_region.std(dim=1, keepdim=True)).sum() / (
@@ -1524,6 +1525,7 @@ def create_fake_TLight(img, mask_p):
         "Since background index is 0, the num is num+1."
         temp_connect_mask = torch.where(torch.from_numpy(label_connect) == j, 1.0, 0.0).to(img.device)
         light_i_ = temp_connect_mask.expand_as(img_processed) * img_processed
+        fake_TLight_region_i = temp_connect_mask.expand_as(img_processed) * fake_TLight_region
         patch_max = light_i_[0].flatten(1)[:, light_i_[0].flatten(1).mean(dim=0)>0].max(dim=1)[0]
         patch_mean = light_i_[0].flatten(1)[:, light_i_[0].flatten(1).mean(dim=0)>0].mean(dim=1)
         patch_overlap = gaussian_blur(temp_connect_mask.expand_as(img_processed), (11, 11), (7., 7.))
@@ -1531,16 +1533,16 @@ def create_fake_TLight(img, mask_p):
         # patch_overlap_neg = (1 - patch_overlap) * (patch_overlap>0)
         if patch_mean[0] - 1.5 * patch_mean[2] > 0:  # if red
             light_i = patch_overlap * light_i_ * 3
-            light_i = light_i.clamp(light_i_.min(), 1)
+            light_i = light_i.clamp(fake_TLight_region_i.mean(dim=1).min(), 1)
         elif patch_mean[2] - 1.5 * patch_mean[0] > 0:  # if green
             light_i = patch_overlap * light_i_ * 3
-            light_i = light_i.clamp(light_i_.min(), 1)
+            light_i = light_i.clamp(fake_TLight_region_i.mean(dim=1).min(), 1)
         else:
             light_i = 0
         fake += light_i
     fake = fake/(fake.max() + 1e-6)
-    mask = (fake.sum(dim=1, keepdim=True) - TLight_region.sum(dim=1, keepdim=True) > 0).expand_as(fake)
-    return fake * mask + TLight_region.mean(dim=1, keepdim=True)[TLight_region > 0].min() * mask
+    # mask = (fake.sum(dim=1, keepdim=True) - TLight_region.sum(dim=1, keepdim=True) > 0).expand_as(fake)
+    return fake #* mask + TLight_region.mean(dim=1, keepdim=True)[TLight_region.mean(dim=1, keepdim=True) > 0].min() * mask
 
 
 def create_fake_Light(img, mask_p):
