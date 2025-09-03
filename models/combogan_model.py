@@ -1054,9 +1054,6 @@ class GanColorCombo(ComboGANModel):
         fake_A_s = F.interpolate(self.fake_A, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
         fake_A_C_s = F.interpolate(self.fake_A_C, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
         real_B_s = F.interpolate(self.real_B, size=[rand_size_B, rand_size_B], mode='bilinear', align_corners=False)
-        self.loss_S_rec = {self.DA: 0., self.DB: 0., self.DC: 0., self.Fus: 0.}
-        self.loss_S_enc = {self.DA: 0., self.DB: 0., self.DC: 0., self.Fus: 0.}
-        # if self.lambda_acl > 0.0:
 
         if self.epoch >= 20:  # epoch 20-30
             real_A_pred, _ = self.netS.forward(real_A_s, self.DA)
@@ -1088,8 +1085,8 @@ class GanColorCombo(ComboGANModel):
                         #                             align_corners=False)
                         fake_A_BC_pred, _ = self.netS.forward(fake_A_BC_s, self.DA)
 
-        self.loss_S_rec = {self.DA: 0.0, self.DB: 0.0, self.DC: 0.0}
-        self.loss_S_enc = {self.DA: 0.0, self.DB: 0.0, self.DC: 0.0}
+        self.loss_S_rec = {self.DA: 0., self.DB: 0., self.DC: 0., self.Fus: 0.}
+        self.loss_S_enc = {self.DA: 0., self.DB: 0., self.DC: 0., self.Fus: 0.}
         if self.DB_GT_update_idx == 0.0:  # epoch 0-40
             if self.DA_GT_update_idx != 1.0:
                 ####0-20 epoch, self.lambda_sc is set to 0.
