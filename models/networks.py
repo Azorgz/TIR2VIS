@@ -1381,7 +1381,7 @@ class ConcatBlock(nn.Module):
         z = y_input
         for i, conv in enumerate(self.conv_block_fus):
             z = conv((x_input, z), *args, p_color=p_color)
-        return z
+        return z, None
 
 
 class SpatialCorrectionBlock(nn.Module):
@@ -1978,7 +1978,7 @@ class Color_G_Plexer(G_Plexer):
         betas = optimizers.param_groups[0]['betas']
         concat_args = (256, 4, self.enc_args[3], self.enc_args[4], self.enc_args[6])
         self.spatialTransformer = SpatialCorrectionBlock()
-        # self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
+        self.feature_concatenation = ConcatBlock(*concat_args, gpu_ids=plexer.enc_args[5])
         self.feature_concatenation = AttnFusionBlock(dim=256)
         self.networks.append(self.feature_concatenation)
         self.init_optimizers(opt, lr, betas)

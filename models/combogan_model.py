@@ -1102,6 +1102,7 @@ class GanColorCombo(ComboGANModel):
                 ###and training semantic segmentation networks for domain B/C by pseudo-labels of domain A and pseudo-NTIR images
                 self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
                 seg_loss = self.update_class_criterion(self.SegMask_A_update.long())
+                self.loss_S_enc[self.DC] += 0.5 * self.lambda_sc * seg_loss(seg, SegMask_A_s[0].long())
                 ####
                 if self.cond('A', dom='S'):
                     self.loss_S_enc[self.DA] += self.lambda_sc * (seg_loss(real_A_pred, self.SegMask_A_update.long()) +
@@ -1123,6 +1124,7 @@ class GanColorCombo(ComboGANModel):
                 ####and training semantic segmentation networks for domain B by both real-TIR and pseudo-TIR images.
                 self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
                 seg_loss_A = self.update_class_criterion(self.SegMask_A_update.long())
+                self.loss_S_enc[self.DC] += 0.5 * self.lambda_sc * seg_loss_A(seg, SegMask_A_s[0].long())
                 if self.cond('A', dom='S'):
                     self.loss_S_enc[self.DA] += self.lambda_sc * (
                             seg_loss_A(real_A_pred, self.SegMask_A_update.long()) +
@@ -1144,6 +1146,7 @@ class GanColorCombo(ComboGANModel):
                 ####75-100 epoch, constraining semantic consistency after fixing segmentation networks of the two domains.
                 self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
                 seg_loss_A = self.update_class_criterion(self.SegMask_A_update.long())
+                self.loss_S_enc[self.DC] += 0.5 * self.lambda_sc * seg_loss_A(seg, SegMask_A_s[0].long())
                 self.loss_S_rec[self.DB] = self.lambda_sc * seg_loss_A(fake_B_pred, self.SegMask_A_update.long())
                 self.SegMask_B_update = self.UpdateIRGTv2(real_B_pred.detach(), fake_A_pred_d,
                                                           SegMask_B_s[0].long(), real_B_s, self.IR_prob_th)
@@ -1159,7 +1162,7 @@ class GanColorCombo(ComboGANModel):
 
         # Optional Scale Robustness Loss on generated fake images, added by lfy
         self.loss_SR = {self.DC: 0.0}
-        if self.DB_GT_update_idx > 100.0:
+        if self.DB_GT_update_idx > 0.0:
             inv_idx = torch.rand(1)
             if inv_idx > 0.5:
                 fake_A_BC_ds = F.interpolate(self.fake_A_BC, size=[128, 128], mode='bilinear', align_corners=False)
