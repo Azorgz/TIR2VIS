@@ -1062,10 +1062,9 @@ class GanColorCombo(ComboGANModel):
                 fake_A_pred_d, _ = self.netS.forward(fake_A_s.detach(), self.DA)
                 fake_A_C_pred_d, _ = self.netS.forward(fake_A_C_s.detach(), self.DA)
                 real_B_pred, _ = self.netS.forward(real_B_s, self.DB)
+                fake_C_A_s = F.interpolate(self.fake_C_A, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
                 if 40 >= self.epoch:  # epoch 31-40
                     fake_B_pred_d, _ = self.netS.forward(fake_B_s.detach(), self.DB)
-                    fake_C_A_s = F.interpolate(self.fake_C_A, size=[rand_size, rand_size], mode='bilinear',
-                                               align_corners=False)
                     fake_C_A_pred_d, _ = self.netS.forward(fake_C_A_s.detach(), self.DC)
                 elif self.epoch > 40:  # epoch 41-100
                     fake_B_pred, _ = self.netS.forward(fake_B_s, self.DB)
@@ -1075,9 +1074,6 @@ class GanColorCombo(ComboGANModel):
                     fake_A_BC_s = F.interpolate(self.fake_A_BC, size=[rand_size, rand_size], mode='bilinear',
                                                 align_corners=False)
                     fake_A_BC_pred_d, _ = self.netS.forward(fake_A_BC_s.detach(), self.DA)
-
-                    fake_C_A_s = F.interpolate(self.fake_C_A, size=[rand_size, rand_size], mode='bilinear',
-                                               align_corners=False)
                     fake_C_A_pred, _ = self.netS.forward(fake_C_A_s, self.DC)
 
                     if self.epoch >= 75:  # epoch 75-100
@@ -1102,6 +1098,7 @@ class GanColorCombo(ComboGANModel):
                 ####30-40 epoch, training semantic segmentation networks for domain A with updating segmentation GT,
                 ###and training semantic segmentation networks for domain B/C by pseudo-labels of domain A and pseudo-NTIR images
                 self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
+                self.SegMask_A_update = self.UpdateVisGTv2(fake_C_A_s.detach(), self.SegMask_A_update[0].long(), 0.25)
                 seg_loss = self.update_class_criterion(self.SegMask_A_update.long())
                 if segMask_Fus is not None and self.cond('Fus'):
                     self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss(segMask_Fus, SegMask_A_s[0].long())
@@ -1125,6 +1122,7 @@ class GanColorCombo(ComboGANModel):
                 ####40-75 epoch, training semantic segmentation networks for domain A with updating segmentation GT,
                 ####and training semantic segmentation networks for domain B by both real-TIR and pseudo-TIR images.
                 self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
+                self.SegMask_A_update = self.UpdateVisGTv2(fake_C_A_s.detach(), self.SegMask_A_update[0].long(), 0.25)
                 seg_loss_A = self.update_class_criterion(self.SegMask_A_update.long())
                 if segMask_Fus is not None and self.cond('Fus'):
                     self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss_A(segMask_Fus, SegMask_A_s[0].long()) * 5
@@ -1148,6 +1146,7 @@ class GanColorCombo(ComboGANModel):
             else:
                 ####75-100 epoch, constraining semantic consistency after fixing segmentation networks of the two domains.
                 self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
+                self.SegMask_A_update = self.UpdateVisGTv2(fake_C_A_s.detach(), self.SegMask_A_update[0].long(), 0.25)
                 seg_loss_A = self.update_class_criterion(self.SegMask_A_update.long())
                 if segMask_Fus is not None and self.cond('Fus'):
                     self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss_A(segMask_Fus, SegMask_A_s[0].long()) * 5

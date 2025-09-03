@@ -1312,14 +1312,18 @@ def UpdateFakeVISSegGT(real_vis_night, Seg_mask, dis_lum):
     _, _, h, w = real_vis_night.size()
     _, seg_h, seg_w = Seg_mask.size()
     GT_mask = F.interpolate(Seg_mask.expand(1, 1, seg_h, seg_w).float(), size=[h, w], mode='nearest').squeeze()
-    veg_mask = torch.where(GT_mask == 8.0, torch.ones_like(GT_mask), torch.zeros_like(GT_mask))
+    veg_mask = torch.where(GT_mask == 8.0, 1., 0.)
+    sky_mask = torch.where(GT_mask == 10.0, 1., 0.)
     real_vis_night_norm = (real_vis_night + 1.0) * 0.5
     real_vis_night_gray = torch.squeeze(
         .299 * real_vis_night_norm[:, 0:1, :, :] + .587 * real_vis_night_norm[:, 1:2, :,
                                                           :] + .114 * real_vis_night_norm[:, 2:3, :, :])
-    veg_gray = veg_mask * real_vis_night_gray
-    mask_high_light = torch.where(veg_gray > dis_lum, torch.ones_like(Seg_mask) * 255., Seg_mask)
-    mask_low_light = torch.where(veg_gray < dis_lum, torch.ones_like(Seg_mask) * 255., mask_high_light)
+    if torch.sum(veg_mask*sky_mask) > 0:
+        veg_gray = veg_mask * real_vis_night_gray
+        sky_area = sky_mask * real_vis_night_gray
+        sky_low_light = (sky_area + (1.0 - sky_mask)).min()
+        mask_high_light = torch.where(veg_gray > dis_lum, torch.ones_like(Seg_mask) * 255., Seg_mask)
+        mask_low_light = torch.where(veg_gray < dis_lum, torch.ones_like(Seg_mask) * 255., mask_high_light)
     return mask_low_light
 
 
