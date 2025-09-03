@@ -860,7 +860,9 @@ class ResnetGenEncoder(nn.Module):
         mult = 2 ** n_downsampling
         for _ in range(n_blocks):
             model += [ResnetBlock(ngf * mult, norm_layer=norm_layer,
-                                  use_dropout=use_dropout, use_bias=use_bias, padding_type=padding_type)]
+                                  use_dropout=use_dropout, use_bias=use_bias, padding_type=padding_type),
+                      norm_layer(ngf * mult),
+                      nn.Tanh()]
 
         self.model = nn.Sequential(*model)
 
