@@ -845,8 +845,7 @@ class ResnetGenEncoder(nn.Module):
         self.gpu_ids = gpu_ids
 
         model = [nn.ReflectionPad2d(3),
-                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0,
-                           bias=use_bias),
+                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
                  norm_layer(ngf),
                  nn.PReLU()]
 
@@ -1210,7 +1209,8 @@ class ResnetBlock(nn.Module):
         else:
             raise NotImplementedError('padding [%s] is not implemented' % padding_type)
         conv_block += [nn.Conv2d(dim + n_domains, dim, kernel_size=3, padding=p, bias=use_bias),
-                       norm_layer(dim)]
+                       norm_layer(dim),
+                       ]
 
         self.conv_block = SequentialContext(n_domains, *conv_block)
 

@@ -1127,7 +1127,7 @@ class GanColorCombo(ComboGANModel):
                 self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
                 seg_loss_A = self.update_class_criterion(self.SegMask_A_update.long())
                 if segMask_Fus is not None and self.cond('Fus'):
-                    self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss_A(segMask_Fus, SegMask_A_s[0].long())
+                    self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss_A(segMask_Fus, SegMask_A_s[0].long()) * 5
                 if self.cond('A', dom='S'):
                     self.loss_S_enc[self.DA] += self.lambda_sc * (
                             seg_loss_A(real_A_pred, self.SegMask_A_update.long()) +
@@ -1150,7 +1150,7 @@ class GanColorCombo(ComboGANModel):
                 self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
                 seg_loss_A = self.update_class_criterion(self.SegMask_A_update.long())
                 if segMask_Fus is not None and self.cond('Fus'):
-                    self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss_A(segMask_Fus, SegMask_A_s[0].long())
+                    self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss_A(segMask_Fus, SegMask_A_s[0].long()) * 5
                 self.loss_S_rec[self.DB] = self.lambda_sc * seg_loss_A(fake_B_pred, self.SegMask_A_update.long())
                 self.SegMask_B_update = self.UpdateIRGTv2(real_B_pred.detach(), fake_A_pred_d,
                                                           SegMask_B_s[0].long(), real_B_s, self.IR_prob_th)
