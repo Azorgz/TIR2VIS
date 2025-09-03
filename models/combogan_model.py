@@ -1098,7 +1098,7 @@ class GanColorCombo(ComboGANModel):
                 ####30-40 epoch, training semantic segmentation networks for domain A with updating segmentation GT,
                 ###and training semantic segmentation networks for domain B/C by pseudo-labels of domain A and pseudo-NTIR images
                 self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
-                self.SegMask_A_update = self.UpdateVisGTv2(fake_C_A_s.detach(), self.SegMask_A_update[0].long(), 0.25)
+                self.SegMask_A_update = self.UpdateVisGTv2(fake_C_A_s.detach(), self.SegMask_A_update.long(), 0.25)
                 seg_loss = self.update_class_criterion(self.SegMask_A_update.long())
                 if segMask_Fus is not None and self.cond('Fus'):
                     self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss(segMask_Fus, SegMask_A_s[0].long())
@@ -1122,7 +1122,7 @@ class GanColorCombo(ComboGANModel):
                 ####40-75 epoch, training semantic segmentation networks for domain A with updating segmentation GT,
                 ####and training semantic segmentation networks for domain B by both real-TIR and pseudo-TIR images.
                 self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
-                self.SegMask_A_update = self.UpdateVisGTv2(fake_C_A_s.detach(), self.SegMask_A_update[0].long(), 0.25)
+                self.SegMask_A_update = self.UpdateVisGTv2(fake_C_A_s.detach(), self.SegMask_A_update.long(), 0.25)
                 seg_loss_A = self.update_class_criterion(self.SegMask_A_update.long())
                 if segMask_Fus is not None and self.cond('Fus'):
                     self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss_A(segMask_Fus, SegMask_A_s[0].long()) * 5
@@ -1146,7 +1146,7 @@ class GanColorCombo(ComboGANModel):
             else:
                 ####75-100 epoch, constraining semantic consistency after fixing segmentation networks of the two domains.
                 self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
-                self.SegMask_A_update = self.UpdateVisGTv2(fake_C_A_s.detach(), self.SegMask_A_update[0].long(), 0.25)
+                self.SegMask_A_update = self.UpdateVisGTv2(fake_C_A_s.detach(), self.SegMask_A_update.long(), 0.25)
                 seg_loss_A = self.update_class_criterion(self.SegMask_A_update.long())
                 if segMask_Fus is not None and self.cond('Fus'):
                     self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss_A(segMask_Fus, SegMask_A_s[0].long()) * 5
