@@ -1902,7 +1902,7 @@ class GanColorCombo(ComboGANModel):
             self.SegMask_B = input_SM_B.long().cuda(self.gpu_ids[0])
             input_Fus = input['Fus']
             self.real_Fus.resize_(input_Fus.size()).copy_(input_Fus)
-            self.Fus = input['DFus'][0]
+            self.Fus = int(input['DFus'][0])
             col = ImageTensor(self.real_C, normalize=True)
             gray = col.GRAY()
             mask_L = ((gray >= gray.mean() - 3 * gray.std()) * (gray <= self.opt.vis_night_hl_th))
