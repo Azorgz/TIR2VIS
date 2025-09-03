@@ -1048,7 +1048,7 @@ class GanColorCombo(ComboGANModel):
         SegMask_A_s = F.interpolate(self.SegMask_A.unsqueeze(0).float(), size=[rand_size, rand_size], mode='nearest')
         SegMask_B_s = F.interpolate(self.SegMask_B.unsqueeze(0).float(), size=[rand_size, rand_size], mode='nearest')
         if segMask_Fus is not None and self.cond('Fus'):
-            segMask_Fus = F.interpolate(segMask_Fus.unsqueeze(0).float(), size=[rand_size, rand_size], mode='nearest')
+            segMask_Fus = F.interpolate(segMask_Fus, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
         real_A_s = F.interpolate(self.real_A, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
         fake_B_s = F.interpolate(self.fake_B, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
         fake_A_s = F.interpolate(self.fake_A, size=[rand_size, rand_size], mode='bilinear', align_corners=False)
