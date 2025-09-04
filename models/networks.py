@@ -434,7 +434,8 @@ class CrossAttentionBlock(nn.Module):
         self.norm2 = LNorm(dimf, LayerNorm_type)
         self.ffn = FeedForward(dimf, ffn_expansion_factor, bias)
         self.pmt = prominent()
-        self.selfatt = TransformerBlock(dim=dimf, num_heads=num_heads, ffn_expansion_factor=ffn_expansion_factor,
+        self.selfatt = TransformerBlock(dim=dimf, num_heads=num_heads,
+                                        ffn_expansion_factor=ffn_expansion_factor,
                                         bias=bias, LayerNorm_type=LayerNorm_type)
 
     def forward(self, fux, detx):
@@ -863,6 +864,39 @@ class ResnetGenEncoder(nn.Module):
                                   use_dropout=use_dropout, use_bias=use_bias, padding_type=padding_type),
                       norm_layer(ngf * mult),
                       nn.Tanh()]
+
+        self.model = nn.Sequential(*model)
+
+    def forward(self, input):
+        if self.gpu_ids and isinstance(input.data, torch.cuda.FloatTensor):
+            return nn.parallel.data_parallel(self.model, input, self.gpu_ids)
+        return self.model(input)
+
+
+class ResnetGenEncoder_(nn.Module):
+    def __init__(self, input_nc, n_blocks=4, ngf=64, norm_layer=nn.BatchNorm2d,
+                 use_dropout=False, gpu_ids=[], use_bias=False, padding_type='reflect'):
+        assert (n_blocks >= 0)
+        super(ResnetGenEncoder_, self).__init__()
+        self.gpu_ids = gpu_ids
+
+        model = [nn.ReflectionPad2d(3),
+                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
+                 norm_layer(ngf),
+                 nn.PReLU()]
+
+        n_downsampling = 2
+        for i in range(n_downsampling):
+            mult = 2 ** i
+            model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3,
+                                stride=2, padding=1, bias=use_bias),
+                      norm_layer(ngf * mult * 2),
+                      nn.PReLU()]
+
+        mult = 2 ** n_downsampling
+        for _ in range(n_blocks):
+            model += [ResnetBlock(ngf * mult, norm_layer=norm_layer,
+                                  use_dropout=use_dropout, use_bias=use_bias, padding_type=padding_type)]
 
         self.model = nn.Sequential(*model)
 
@@ -1822,17 +1856,25 @@ class SegmentorHeadv2(nn.Module):
 class AttnFusionBlock(nn.Module):
     def __init__(self, dim=128, nc=19):
         super(AttnFusionBlock, self).__init__()
-        self.shuffle_ir = nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False)
-        self.shuffle_rgb = nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False)
-        self.conv_combination = nn.Conv2d(dim * 2, dim, kernel_size=1, padding=0, bias=False)
+        self.shuffle_ir = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
+                                        nn.BatchNorm2d(dim), nn.Tanh())
+        self.shuffle_rgb = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
+                                         nn.BatchNorm2d(dim), nn.Tanh())
+        self.conv_combination = nn.Sequential(nn.Conv2d(2 * dim, dim, kernel_size=1, padding=0, bias=False),
+                                              nn.BatchNorm2d(dim), nn.Tanh())
         self.LFExtractor = nn.DataParallel(LowFreqExtractor(dim=dim))
         self.HFExtractor = nn.DataParallel(HighFreqExtractor(num_layers=3, dim=dim))
         self.CA_HF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=nc))
         self.CA_LF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=nc))
         self.seg_head = SegmentorHeadv2(input_nc=4, n_blocks=4, ngf=64, num_classes=nc)
         self.Decoder = nn.Sequential(nn.Conv2d(dim * 2 + 3, dim, kernel_size=1, padding=0, bias=False),
+                                     nn.BatchNorm2d(dim),
+                                     nn.Tanh(),
                                      nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
+                                     nn.BatchNorm2d(dim),
+                                     nn.Tanh(),
                                      nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
+                                     nn.BatchNorm2d(dim),
                                      nn.Tanh())
         self.weight = nn.Parameter(torch.tensor(0.))
 
