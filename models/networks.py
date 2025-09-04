@@ -1891,7 +1891,7 @@ class AttnFusionBlock(nn.Module):
         if p_color is None:
             p_color = torch.zeros([3]).to(x_input.device)
         z = self.Decoder(torch.cat([LF, HF, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
-        return nn.Tanh()(x + z * (self.weight**2 + 0.1)), seg
+        return nn.Tanh()(x + z * (self.weight**2 + 0.25)), seg
 
 
 #### PLEXERS
