@@ -1959,8 +1959,6 @@ class Plexer(nn.Module):
             filename = path + f'{i}.pth'
             if isfile(filename):
                 dic = torch.load(filename)
-                if 'G6' in filename:
-                    dic['weight'] = torch.tensor(0.)
                 net.load_state_dict(dic)
 
 
