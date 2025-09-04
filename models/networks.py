@@ -1893,7 +1893,7 @@ class AttnFusionBlock(nn.Module):
         xy = self.conv_combination(torch.cat([x, y], dim=1))
         LF = self.LFExtractor(xy)
         HF = self.HFExtractor(xy)
-        seg = self.seg_head(torch.cat([image_ir.mean(dim=1, keepdim=True), image_rgb], dim=1))[0]
+        seg = self.seg_head(torch.cat([image_ir.mean(dim=1, keepdim=True).detach(), image_rgb.detach()], dim=1))[0]
         LF = self.CA_LF(LF, seg)
         HF = self.CA_HF(HF, seg)
         if p_color is None:
