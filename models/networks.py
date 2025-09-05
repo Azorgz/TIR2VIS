@@ -1865,7 +1865,7 @@ class AttnFusionBlock(nn.Module):
         self.HFExtractor = nn.DataParallel(HighFreqExtractor(num_layers=3, dim=dim))
         self.CA_HF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=nc))
         self.CA_LF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=nc))
-        self.seg_head = SegmentorHeadv2(input_nc=4, n_blocks=4, ngf=64, num_classes=nc)
+        self.seg_head = SegmentorHeadv2(input_nc=1, n_blocks=4, ngf=64, num_classes=nc)
         self.Decoder = nn.Sequential(nn.Conv2d(dim * 2 + 3, dim, kernel_size=1, padding=0, bias=False),
                                      nn.BatchNorm2d(dim),
                                      nn.Tanh(),
@@ -1892,7 +1892,7 @@ class AttnFusionBlock(nn.Module):
         xy = self.conv_combination(torch.cat([x, y], dim=1))
         LF = self.LFExtractor(xy)
         HF = self.HFExtractor(xy)
-        seg = self.seg_head(torch.cat([image_ir.mean(dim=1, keepdim=True).detach(), image_rgb.detach()], dim=1))[0]
+        seg = self.seg_head(image_ir.mean(dim=1, keepdim=True).detach())[0]
         LF = self.CA_LF(LF, seg)
         HF = self.CA_HF(HF, seg)
         if p_color is None:
@@ -1958,6 +1958,7 @@ class Plexer(nn.Module):
             filename = path + f'{i}.pth'
             if isfile(filename):
                 dic = torch.load(filename)
+                dic = {k: v if not 'seg_head.model.1.weight' == k else v[:, [0, -2, -1]] for k, v in dic.items()}
                 net.load_state_dict(dic)
 
 
