@@ -1084,11 +1084,7 @@ class GanColorCombo(ComboGANModel):
         self.loss_S_rec = {self.DA: 0., self.DB: 0., self.DC: 0., self.Fus: 0.}
         self.loss_S_enc = {self.DA: 0., self.DB: 0., self.DC: 0., self.Fus: 0.}
         if self.DB_GT_update_idx == 0.0:  # epoch 0-40
-            if self.epoch <= 20:  # epoch 0-20
-                seg_loss = self.update_class_criterion(SegMask_A_s[0].long())
-                if segMask_Fus is not None and self.cond('Fus'):
-                    self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss(segMask_Fus, SegMask_A_s[0].long())
-            elif self.DA_GT_update_idx != 1.0:
+            if self.DA_GT_update_idx != 1.0:
                 ####0-20 epoch, self.lambda_sc is set to 0.
                 ####20-30 epoch, training semantic segmentation networks for domain A without updating segmentation GT
                 seg_loss = self.update_class_criterion(SegMask_A_s[0].long())
