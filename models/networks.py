@@ -439,9 +439,8 @@ class CrossAttentionBlock(nn.Module):
                                         bias=bias, LayerNorm_type=LayerNorm_type)
 
     def forward(self, fux, detx):
-        x = (self.attn(self.norm1f(fux), self.norm1d(detx))) + fux
+        x = self.attn(self.norm1f(fux), self.norm1d(detx)) + (fux + 1)/2
         x = x + self.pmt(self.ffn(self.norm2(x)))
-
         return self.selfatt(x)
 
 

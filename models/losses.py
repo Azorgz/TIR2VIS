@@ -707,7 +707,7 @@ def BiasCorrLossV2(Seg_mask, fake_Night, real_vis, rec_vis, real_vis_edgemap, gp
     Tlight_mask_area = torch.sum(Tlight_mask)
     if Tlight_mask_area > 25:
         new_GT_color = create_fake_TLight(real_img_norm, fake_img_norm, Tlight_mask)
-        TLight_fake_region = Tlight_mask.mul(fake_img_norm)
+        TLight_fake_region = (new_GT_color > 0).mul(fake_img_norm)
         TLight_loss = F.relu((TLight_fake_region - new_GT_color)**2).sum() / Tlight_mask_area
         mask_fake += new_GT_color > 0
     else:
