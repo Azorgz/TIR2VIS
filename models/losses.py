@@ -485,26 +485,6 @@ def TrafLighLumiLoss(fake_img, fake_mask, real_IR, gpu_ids=[]):
 
     return losses
 
-
-def TrafLighLumiLossv2(fake_img, fake_mask, real_RGB_Night, gpu_ids=[]):
-    """Traffic Light Luminance Loss v2. fake_img: fake vis composite image.
-    fake_mask: IR seg mask. real_mask: Vis seg mask."""
-    _, _, h, w = fake_img.size()
-    _, _, seg_h, seg_w = fake_mask.size()
-
-    fake_img_norm = (fake_img + 1.0) * 0.5
-    real_RGB_Night_norm = (real_RGB_Night + 1.0) * 0.5
-
-    fake_vis_Light_area, color = getLightRegionColor(6.0, real_RGB_Night_norm, fake_mask, gpu_ids)
-
-    if fake_vis_Light_area > 100:
-        losses = F.relu(fake_vis_Light_DR_Mean - fake_vis_Light_BR_Min) / (fake_vis_Light_BR_Min.detach() + 1e-6)
-    else:
-        losses = torch.zeros(1).cuda(gpu_ids)
-
-    return losses
-
-
 def MaskedCGRLoss(input_mask, real_IR, fake_vis, gpu_ids):
     "Conditional Gradient Repairing loss for input binary mask."
 
