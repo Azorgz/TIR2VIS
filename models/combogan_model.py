@@ -993,10 +993,10 @@ class GanColorCombo(ComboGANModel):
             rec_encoded_BC = self.netG.encode(self.fake_A_BC.detach(), self.DA)
             self.rec_C_A_BC = self.netG.decode(rec_encoded_BC, self.DC)
             self.rec_B_A_BC = self.netG.decode(rec_encoded_BC, self.DB)
-            # self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A_BC * self.mask, self.rec_real_C * self.mask) \
-            #     if self.cond('DC', 'EC', 'EA', 'DA') else self.null
-            # self.loss_cycle[self.DC] += loss_cycle(self.rec_B_A_BC, self.real_B) \
-            #     if self.cond('EC', 'DB', 'EA', 'DA') else self.null
+            self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A_BC * self.mask, self.rec_real_C * self.mask) \
+                if self.cond('DC', 'EC', 'EA', 'DA') else self.null
+            self.loss_cycle[self.DC] += loss_cycle(self.rec_B_A_BC, self.real_B) \
+                if self.cond('EC', 'DB', 'EA', 'DA') else self.null
             # rec_encoded_BC = self.netG.encode(self.fake_BC, self.DC)
             # self.rec_B_BC = self.netG.decode(rec_encoded_BC, self.DB)
             # self.rec_C_BC = self.netG.decode(rec_encoded_BC, self.DC)
@@ -1035,11 +1035,9 @@ class GanColorCombo(ComboGANModel):
         # Optional total variation loss on generate fake images, added by lfy
         self.loss_tv[self.DA] += self.lambda_tv * self.criterionTV(self.fake_A) if self.cond('EB', 'DA') else self.null
         self.loss_tv[self.DB] += self.lambda_tv * self.criterionTV(self.fake_B) if self.cond('EA', 'DB') else self.null
-        self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_C_A) if self.cond('EA',
-                                                                                               'DC') else self.null
+        self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_C_A) if self.cond('EA', 'DC') else self.null
         # self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_A_C) if self.cond('EC', 'DA') else self.null
-        # self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_B_C) if self.cond('EC',
-        #                                                                                        'DB') else self.null
+        # self.loss_tv[self.DC] += self.lambda_tv * self.criterionTV(self.fake_B_C) if self.cond('EC', 'DB') else self.null
         if self.cond('Fus'):
             self.loss_tv[self.Fus] += self.lambda_tv * self.criterionTV(self.fake_A_BC) if self.cond('Fus', 'EC', 'EB',
                                                                                                      'DA') else self.null

@@ -4,9 +4,11 @@ import os
 import cv2 as cv
 from tqdm import tqdm
 
-imgs = glob.glob('datasets/LYNRED/LYNRED_datasets/trainA/*.jpg')
-# imgs = glob.glob('datasets/LYNRED/LYNRED_datasets/LYNRED_IR_edge_map/*.jpg')
-path = 'datasets/LYNRED/LYNRED_datasets/LYNRED_VIS_edge_map/'
+dataset = 'FLIR'
+
+imgs = glob.glob(f'datasets/{dataset}/{dataset}_datasets/trainA/*')
+# imgs = glob.glob('datasets/{dataset}/{dataset}_datasets/{dataset}_IR_edge_map/*')
+path = f'datasets/{dataset}/{dataset}_datasets/{dataset}_VIS_edge_map/'
 
 # os.mkdir(path, exist_ok=True)
 
