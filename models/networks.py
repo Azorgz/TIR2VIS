@@ -1886,7 +1886,7 @@ class AttnFusionBlock(nn.Module):
                                      nn.Tanh(),
                                     nn.Conv2d(1, 1, kernel_size=6, stride=4, padding=2, bias=False),
                                     nn.BatchNorm2d(1),
-                                    nn.Tanh())
+                                    nn.ReLU())
 
     def forward(self, x_input, y_input, *args, p_color=None, detach_seg=True):
         mask, image_ir, image_rgb = args
@@ -1901,7 +1901,7 @@ class AttnFusionBlock(nn.Module):
         if p_color is None:
             p_color = torch.zeros([3]).to(x_input.device)
         z = self.Decoder(torch.cat([LF, HF, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
-        return x + z * (self.weight(torch.cat([image_ir, image_rgb], dim=1)).mean()**2 + 0.25), seg
+        return nn.Tanh()(x + z * (self.weight(torch.cat([image_ir, image_rgb], dim=1)).mean() + 0.25)), seg
 
 
 #### PLEXERS

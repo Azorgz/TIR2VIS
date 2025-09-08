@@ -1165,6 +1165,9 @@ class GanColorCombo(ComboGANModel):
                 SegMask_B_update2 = F.interpolate(self.SegMask_B_update.expand(1, 1, 256, 256).float(),
                                                   size=[rand_size, rand_size], mode='nearest')
                 seg_loss = self.update_class_criterion(SegMask_B_update2[0].long())
+                if segMask_Fus is not None and self.cond('Fus'):
+                    self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss(segMask_Fus,
+                                                                           self.SegMask_B_update2[0].long())
                 if self.cond('B', dom='S'):
                     self.loss_S_enc[self.DB] = self.lambda_sc * seg_loss(real_B_pred, SegMask_B_update2[0].long())
                 if self.cond('C', dom='S'):
@@ -1174,8 +1177,6 @@ class GanColorCombo(ComboGANModel):
         if segMask_Fus is not None and self.cond('Fus'):
             self.segMask_Fus_update = F.interpolate(segMask_Fus.argmax(dim=1, keepdim=True).float(), size=[256, 256],
                                                     mode='nearest')
-            mask_ref = self.SegMask_A_update.long() if self.epoch < 75 else self.SegMask_B_update2[0].long()
-            self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss(segMask_Fus, mask_ref)
         else:
             self.segMask_Fus_update = None
 
