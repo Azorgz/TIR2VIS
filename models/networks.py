@@ -1884,16 +1884,16 @@ class AttnFusionBlock(nn.Module):
                                     nn.BatchNorm2d(1),
                                     nn.Tanh())
 
-    def forward(self, x_input, y_input, *args, p_color=None):
+    def forward(self, x_input, y_input, *args, p_color=None, detach_seg=True):
         mask, image_ir, image_rgb = args
         x = self.shuffle_ir(x_input)
         y = self.shuffle_rgb(y_input)
         xy = self.conv_combination(torch.cat([x, y], dim=1))
         LF = self.LFExtractor(xy)
         HF = self.HFExtractor(xy)
-        seg = self.seg_head(image_ir.mean(dim=1, keepdim=True).detach())[0]
-        LF = self.CA_LF(LF, seg)
-        HF = self.CA_HF(HF, seg)
+        seg = self.seg_head(image_ir.mean(dim=1, keepdim=True))[0]
+        LF = self.CA_LF(LF, seg.detach() if detach_seg else seg)
+        HF = self.CA_HF(HF, seg.detach() if detach_seg else seg)
         if p_color is None:
             p_color = torch.zeros([3]).to(x_input.device)
         z = self.Decoder(torch.cat([LF, HF, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
@@ -2064,7 +2064,7 @@ class Color_G_Plexer(G_Plexer):
     # def fusion_features(self, feat1, feat2):  # The input need to be aligned
     #     return self.feature_concatenation(feat1, feat2)
 
-    def fusion_features(self, featIR, featRGB, *args, p_color=None):  # The input need to be aligned
+    def fusion_features(self, featIR, featRGB, *args, p_color=None, detach_seg=False):  # The input need to be aligned
         rgb_rec = None
         if args:
             mask, image_ir, image_rgb = args
@@ -2072,7 +2072,7 @@ class Color_G_Plexer(G_Plexer):
             mask, image_ir, image_rgb = None, None, None
         if image_ir is not None and image_rgb is not None:
             featRGB, rgb_rec = self.spatialTransformer(image_ir, image_rgb, featRGB)
-        return *self.feature_concatenation(featIR, featRGB, *args, p_color=p_color), rgb_rec
+        return *self.feature_concatenation(featIR, featRGB, *args, p_color=p_color, detach_seg=detach_seg), rgb_rec
 
 
 class D_Plexer(Plexer):
