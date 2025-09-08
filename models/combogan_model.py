@@ -1022,7 +1022,7 @@ class GanColorCombo(ComboGANModel):
                                                                          self.fake_A_C, p_color=self.pedestrian_color,
                                                                          detach_seg=self.epoch < 40)
         self.rec_A_BC = self.netG.decode(rec_encoded_BC_A, self.DA)
-        self.loss_cycle[self.DA] += loss_cycle(self.rec_A_BC, real_A_pedestrian_colored)
+        self.loss_cycle[self.DA] += loss_cycle(self.rec_A_BC, real_A_pedestrian_colored.detach())
         # rec_encoded_B_C = self.netG.encode(self.fake_B_C, self.DB)
         # self.rec_C_B = self.netG.decode(rec_encoded_B_C, self.DC)
         # self.loss_cycle[self.DC] += loss_cycle(self.rec_C_B * self.mask, self.real_C * self.mask) \

@@ -8,8 +8,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import repeat, rearrange
+from fastai.vision.models.unet import DynamicUnet
 from kornia.filters import guided_blur
 from torchvision import models
+from torchvision.models import resnet34
 
 from ImagesCameras import ImageTensor
 from ImagesCameras.ImagesCameras.Metrics import SSIM
@@ -1864,7 +1866,9 @@ class AttnFusionBlock(nn.Module):
         self.HFExtractor = nn.DataParallel(HighFreqExtractor(num_layers=3, dim=dim))
         self.CA_HF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=nc))
         self.CA_LF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=nc))
-        self.seg_head = SegmentorHeadv2(input_nc=1, n_blocks=4, ngf=64, num_classes=nc)
+        # self.seg_head = SegmentorHeadv2(input_nc=1, n_blocks=4, ngf=64, num_classes=nc)
+        layers = nn.Sequential(*list(resnet34().children())[:-2])
+        self.seg_head = DynamicUnet(layers, 19, (256, 256), norm_type=None)
         self.Decoder = nn.Sequential(nn.Conv2d(dim * 2 + 3, dim, kernel_size=1, padding=0, bias=False),
                                      nn.BatchNorm2d(dim),
                                      nn.Tanh(),
@@ -1891,7 +1895,7 @@ class AttnFusionBlock(nn.Module):
         xy = self.conv_combination(torch.cat([x, y], dim=1))
         LF = self.LFExtractor(xy)
         HF = self.HFExtractor(xy)
-        seg = self.seg_head(image_ir.mean(dim=1, keepdim=True))[0]
+        seg = self.seg_head(image_ir)
         LF = self.CA_LF(LF, seg.detach() if detach_seg else seg)
         HF = self.CA_HF(HF, seg.detach() if detach_seg else seg)
         if p_color is None:

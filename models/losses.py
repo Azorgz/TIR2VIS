@@ -661,8 +661,7 @@ def BiasCorrLoss(Seg_mask, fake_IR, real_vis, rec_vis, real_vis_edgemap, gpu_ids
     else:
         light_rec_loss = 0.0
     ####Motorcycle reconstruction loss
-    motorcycle_mask = torch.zeros_like(GT_mask)
-    motorcycle_mask = torch.where(GT_mask == 17.0, torch.ones_like(GT_mask), torch.zeros_like(GT_mask))
+    motorcycle_mask = torch.where(GT_mask == 17.0, 1., 0.)
     if torch.sum(motorcycle_mask) > 10:
         motorcycle_rec_loss = PixelConsistencyLoss(rec_vis, real_vis, motorcycle_mask, 3)
     else:
