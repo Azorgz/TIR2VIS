@@ -1215,7 +1215,8 @@ class GanColorCombo(ComboGANModel):
             #     if self.cond('EC', 'DA', 'EA', 'DC') else self.null
             # self.loss_color += self.criterionColor(self.rec_A_BC, real_A_pedestrian_colored, self.SegMask_A) * self.lambda_color \
             #     if self.cond('EC', 'DA', 'EA', 'DC') else self.null
-        # if self.epoch > 30:
+        elif self.epoch > 40:
+            self.loss_color += self.criterionColor(self.rec_C_A_BC, self.real_C, self.SegMask_B_update) * self.lambda_color
         #     self.loss_color += self.criterionColor(self.fake_A_C, self.real_C, self.SegMask_B_update,
         #                                            chroma_adjust=True) * self.lambda_color \
         #         if self.cond('EC', 'DA') else self.null
@@ -1223,8 +1224,6 @@ class GanColorCombo(ComboGANModel):
         #                                            self.SegMask_B_update) * self.lambda_color \
         #         if self.cond('EC', 'DA', 'EB', 'Fus') else self.null
         #     self.loss_color += self.criterionObjectColor(self.rec_A_BC, self.SegMask_A, 'person', self.pedestrian_color)
-
-        # self.loss_color += self.criterionColor(self.rec_C_A_BC, self.real_C, self.SegMask_B_update) * self.lambda_color
 
         if self.lambda_acl > 0:  # epoch > 40
             loss_ACL_B = loss_ACL_B_flip = 0.0
