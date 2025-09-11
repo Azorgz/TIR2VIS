@@ -1164,8 +1164,7 @@ class GanColorCombo(ComboGANModel):
                                                   size=[rand_size, rand_size], mode='nearest')
                 seg_loss = self.update_class_criterion(SegMask_B_update2[0].long())
                 if segMask_Fus is not None and self.cond('Fus'):
-                    self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss(segMask_Fus,
-                                                                           self.SegMask_B_update2[0].long()) * 5
+                    self.loss_S_enc[self.Fus] += self.lambda_sc * seg_loss(segMask_Fus, SegMask_B_update2[0].long()) * 5
                 if self.cond('B', dom='S'):
                     self.loss_S_enc[self.DB] = self.lambda_sc * seg_loss(real_B_pred, SegMask_B_update2[0].long())
                 if self.cond('C', dom='S'):
