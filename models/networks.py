@@ -839,11 +839,11 @@ class Get_gradmag_gray(nn.Module):
 # downsampling/upsampling operations.
 # Code and idea originally from Justin Johnson's architecture.
 # https://github.com/jcjohnson/fast-neural-style/
-class ResnetGenEncoder(nn.Module):
+class ResnetGenEncoder_(nn.Module):
     def __init__(self, input_nc, n_blocks=4, ngf=64, norm_layer=nn.BatchNorm2d,
                  use_dropout=False, gpu_ids=[], use_bias=False, padding_type='reflect'):
         assert (n_blocks >= 0)
-        super(ResnetGenEncoder, self).__init__()
+        super(ResnetGenEncoder_, self).__init__()
         self.gpu_ids = gpu_ids
 
         model = [nn.ReflectionPad2d(3),
@@ -874,11 +874,11 @@ class ResnetGenEncoder(nn.Module):
         return self.model(input)
 
 
-class ResnetGenEncoder_(nn.Module):
+class ResnetGenEncoder(nn.Module):
     def __init__(self, input_nc, n_blocks=4, ngf=64, norm_layer=nn.BatchNorm2d,
                  use_dropout=False, gpu_ids=[], use_bias=False, padding_type='reflect'):
         assert (n_blocks >= 0)
-        super(ResnetGenEncoder_, self).__init__()
+        super(ResnetGenEncoder, self).__init__()
         self.gpu_ids = gpu_ids
 
         model = [nn.ReflectionPad2d(3),
