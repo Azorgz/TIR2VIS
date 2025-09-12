@@ -1902,7 +1902,7 @@ class AttnFusionBlock(nn.Module):
             p_color = torch.zeros([3]).to(x_input.device)
         z = self.Decoder(torch.cat([LF, HF, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
         mask = x > z
-        return nn.Tanh()(x * mask + z * (1- mask)), seg #x + z * (self.weight(torch.cat([image_ir, image_rgb], dim=1)).mean() + 0.25)), seg
+        return nn.Tanh()(x * mask + z * ~mask), seg #x + z * (self.weight(torch.cat([image_ir, image_rgb], dim=1)).mean() + 0.25)), seg
 
 
 #### PLEXERS
