@@ -964,7 +964,7 @@ class GanColorCombo(ComboGANModel):
         # loss_likeness
         loss_likeness = self.null
         # loss_likeness += self.CriterionLikeness(self.fake_C_B * self.mask, self.real_C * self.mask) if self.cond('EB', 'DC') else self.null
-        loss_likeness += self.CriterionLikeness(self.fake_B_C, self.real_B) if self.cond('EC', 'DB') else self.null
+        loss_likeness += self.CriterionLikeness(self.fake_B_C, self.real_B)*3 if self.cond('EC', 'DB') else self.null
         loss_likeness += self.CriterionLikeness(self.fake_C_A, self.real_A)
 
         # Cycle loss

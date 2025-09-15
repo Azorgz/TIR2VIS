@@ -1318,7 +1318,7 @@ def UpdateFakeVISSegGT(real_vis_night, Seg_mask, dis_lum):
     real_vis_night_gray = torch.squeeze(
         .299 * real_vis_night_norm[:, 0:1, :, :] + .587 * real_vis_night_norm[:, 1:2, :,
                                                           :] + .114 * real_vis_night_norm[:, 2:3, :, :])
-    if torch.sum(veg_mask*sky_mask) > 0:
+    if torch.sum(veg_mask * sky_mask) > 0:
         veg_gray = veg_mask * real_vis_night_gray
         sky_area = sky_mask * real_vis_night_gray
         sky_low_light = (sky_area + (1.0 - sky_mask)).min()
@@ -1497,7 +1497,7 @@ def hsv_to_rgb(input_hsv):
 def get_light_color(img_ref, img_test, pos, radius):
     h, w = img_ref.shape[-2:]
     patch_ref = img_ref[:, :, max(int(pos[0] - radius), 0):min(int(pos[0] + radius), h),
-            max(int(pos[1] - radius), 0):min(int(pos[1] + radius), w)]
+                max(int(pos[1] - radius), 0):min(int(pos[1] + radius), w)]
     patch_mean = patch_ref.mean(dim=[2, 3])[0]
     if patch_mean[0] - patch_mean[2] > 0:  # if not green
         if patch_mean[0] > patch_mean[1] * 1.5:  # if not orange
@@ -1514,24 +1514,25 @@ def create_fake_TLight(img, img_fake, mask_p):
     fake_TLight_region = mask_p.mul(img_fake)
     img_processed = TLight_region ** 7
     m = TLight_region.std(dim=1, keepdim=True) > (
-                (TLight_region > 0) * TLight_region.std(dim=1, keepdim=True)).sum() / (
-                    (TLight_region > 0).sum() + 1e-6)
+            (TLight_region > 0) * TLight_region.std(dim=1, keepdim=True)).sum() / (
+                (TLight_region > 0).sum() + 1e-6)
     img_processed = img_processed * m.expand_as(img_processed)
     padsize = 5 // 2
     MaxPool_k5 = nn.MaxPool2d(5, stride=1, padding=padsize)
-    for i in range(2):
+    for i in range(1):
         img_processed = MaxPool_k5(img_processed)
         img_processed = gaussian_blur(img_processed / (img_processed.max() + 1e-14), (5, 5), (1.6, 1.6))
-    img_processed = (img_processed / (img_processed.max() + 1e-14) + TLight_region*0.1).clamp(0, 1)
+    img_processed = (img_processed / (img_processed.max() + 1e-14) + TLight_region * 0.1).clamp(0, 1)
     fake = torch.zeros_like(img_processed).to(img.device)
-    label_connect, num = measure.label((img_processed.mean(dim=1)>img_processed.mean() + img_processed.std()).cpu(), connectivity=2, background=0, return_num=True)
+    label_connect, num = measure.label((img_processed.mean(dim=1) > img_processed.mean() + img_processed.std()).cpu(),
+                                       connectivity=2, background=0, return_num=True)
     for j in range(1, num + 1):
         "Since background index is 0, the num is num+1."
         temp_connect_mask = torch.where(torch.from_numpy(label_connect) == j, 1.0, 0.0).to(img.device)
         light_i_ = temp_connect_mask.expand_as(img_processed) * img_processed
         fake_TLight_region_i = temp_connect_mask.expand_as(img_processed) * fake_TLight_region
-        patch_max = light_i_[0].flatten(1)[:, light_i_[0].flatten(1).mean(dim=0)>0].max(dim=1)[0]
-        patch_mean = light_i_[0].flatten(1)[:, light_i_[0].flatten(1).mean(dim=0)>0].mean(dim=1)
+        patch_max = light_i_[0].flatten(1)[:, light_i_[0].flatten(1).mean(dim=0) > 0].max(dim=1)[0]
+        patch_mean = light_i_[0].flatten(1)[:, light_i_[0].flatten(1).mean(dim=0) > 0].mean(dim=1)
         patch_overlap = gaussian_blur(temp_connect_mask.expand_as(img_processed), (11, 11), (7., 7.))
         patch_overlap /= patch_overlap.max()
         # patch_overlap_neg = (1 - patch_overlap) * (patch_overlap>0)
@@ -1544,9 +1545,9 @@ def create_fake_TLight(img, img_fake, mask_p):
         else:
             light_i = 0
         fake += light_i
-    fake = fake/(fake.max() + 1e-6)
+    fake = fake / (fake.max() + 1e-6)
     # mask = (fake.sum(dim=1, keepdim=True) - TLight_region.sum(dim=1, keepdim=True) > 0).expand_as(fake)
-    return fake #* mask + TLight_region.mean(dim=1, keepdim=True)[TLight_region.mean(dim=1, keepdim=True) > 0].min() * mask
+    return fake  #* mask + TLight_region.mean(dim=1, keepdim=True)[TLight_region.mean(dim=1, keepdim=True) > 0].min() * mask
 
 
 def create_fake_Light(img, mask_p):
@@ -1558,25 +1559,24 @@ def create_fake_Light(img, mask_p):
         temp_connect_mask = torch.where(torch.from_numpy(label_connect) == j, 1.0, 0.0).to(img.device)
         h, w = temp_connect_mask.sum(dim=-2).max() + 1e-14, temp_connect_mask.sum(dim=-1).max()
         kernel_size = max(int(h * 2 + 1), 5), max(int(w * 2 + 1), 5)
-        sigma = torch.tensor([min(h / 2, kernel_size[0]/3)]).to(img.device), torch.tensor([min(w / 2, kernel_size[1]/3)]).to(img.device)
+        sigma = torch.tensor([min(h / 2, kernel_size[0] / 3)]).to(img.device), torch.tensor(
+            [min(w / 2, kernel_size[1] / 3)]).to(img.device)
         if w / h > 1.75:
             # Horizontal white streetlight from the top
-            Light_region = mask_p.mul(torch.Tensor([1., 0.9, 0.85])[None, :, None, None].expand_as(img).to(mask_p.device))
+            Light_region = mask_p.mul(
+                torch.Tensor([1., 0.9, 0.85])[None, :, None, None].expand_as(img).to(mask_p.device))
             #drawn a bit lower
-            temp = torch.zeros([b, c, h_+3, w_]).to(img.device)
+            temp = torch.zeros([b, c, h_ + 3, w_]).to(img.device)
             temp[:, :, 3:] = Light_region
             Light_region = temp[:, :, :-3]
             fake += gaussian_blur(Light_region, kernel_size, (1.6, 2))
         else:
-            color = [1., 0.7, 0.05] if torch.rand(1)>0.5 else [1., 0.95, 0.95]
+            color = [1., 0.7, 0.05] if torch.rand(1) > 0.5 else [1., 0.95, 0.95]
             Light_region = mask_p.mul(
                 torch.Tensor(color)[None, :, None, None].expand_as(img).to(mask_p.device))
             fake += gaussian_blur(Light_region, kernel_size, sigma)
-    img_processed = fake / fake.max() + img*mask_p
+    img_processed = fake / fake.max() + img * mask_p
     return img_processed.clamp(0, 1)
-
-
-
 
 
 def split_im(im, chunk_nb):
