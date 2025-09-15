@@ -996,7 +996,9 @@ class GanColorCombo(ComboGANModel):
             # self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A_BC * self.mask, self.rec_real_C * self.mask) \
             #     if self.cond('DC', 'EC', 'EA', 'DA') else self.null
             self.loss_cycle[self.DC] += loss_cycle(self.rec_B_A_BC, self.real_B) \
-                if self.cond('EC', 'DB', 'EA', 'DA') else self.null
+                if self.cond('EC', 'EB', 'DB', 'EA', 'DA') else self.null
+            self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A_BC, self.real_C) \
+                if self.cond('EC', 'EB', 'DC', 'EA', 'DA') else self.null
             # rec_encoded_BC = self.netG.encode(self.fake_BC, self.DC)
             # self.rec_B_BC = self.netG.decode(rec_encoded_BC, self.DB)
             # self.rec_C_BC = self.netG.decode(rec_encoded_BC, self.DC)
@@ -1221,6 +1223,8 @@ class GanColorCombo(ComboGANModel):
             self.loss_color += self.criterionColor(self.fake_A_BC, self.rec_real_C.detach(),
                                                    self.SegMask_B_update) * self.lambda_color \
                 if self.cond('EC', 'DA', 'EB', 'Fus') else self.null
+            self.loss_color += self.criterionColor(self.fake_B_C, self.real_B, self.SegMask_B) * self.lambda_color \
+                if self.cond('EA', 'DC') else self.null
             self.loss_color += self.criterionObjectColor(self.rec_A_BC, self.SegMask_A, 'person', self.pedestrian_color)
 
         if self.lambda_acl > 0:  # epoch > 40
