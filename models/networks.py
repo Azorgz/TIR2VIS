@@ -1962,7 +1962,7 @@ class Plexer(nn.Module):
             if isfile(filename):
                 dic = torch.load(filename)
                 # dic_ = {k: v for k, v in dic.items() if not 'weight' == k.split('.')[0]}
-                net.load_state_dict(dic_)
+                net.load_state_dict(dic)
 
 
 class G_Plexer(Plexer):
