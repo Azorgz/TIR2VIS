@@ -1879,7 +1879,7 @@ class AttnFusionBlock(nn.Module):
                                      nn.BatchNorm2d(dim),
                                      nn.Tanh())
         self.weight1 = nn.Sequential(nn.Conv2d(6, dim, kernel_size=6, stride=4, padding=2, bias=False),
-                                     nn.BatchNorm2d(1),
+                                     nn.BatchNorm2d(dim),
                                      nn.Sigmoid())
         self.weight2 = nn.Sequential(nn.Conv2d(2*dim, dim, kernel_size=1, padding=0, bias=False),
                                      nn.BatchNorm2d(dim),
