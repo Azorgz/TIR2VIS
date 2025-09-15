@@ -1871,13 +1871,13 @@ class AttnFusionBlock(nn.Module):
         self.seg_head = DynamicUnet(layers, 19, (256, 256), norm_type=None)
         self.Decoder = nn.Sequential(nn.Conv2d(dim * 2 + 3, dim, kernel_size=1, padding=0, bias=False),
                                      nn.BatchNorm2d(dim),
-                                     nn.ReLU(),
+                                     nn.Sigmoid(),
                                      nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
                                      nn.BatchNorm2d(dim),
-                                     nn.ReLU(),
+                                     nn.Sigmoid(),
                                      nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
                                      nn.BatchNorm2d(dim),
-                                     nn.ReLU())
+                                     nn.Sigmoid())
         self.weight1 = nn.Sequential(nn.Conv2d(6, dim, kernel_size=6, stride=4, padding=2, bias=False),
                                      nn.BatchNorm2d(dim),
                                      nn.Sigmoid())
