@@ -1878,15 +1878,14 @@ class AttnFusionBlock(nn.Module):
                                      nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
                                      nn.BatchNorm2d(dim),
                                      nn.Tanh())
-        self.weight = nn.Sequential(nn.Conv2d(6, 1, kernel_size=6, stride=4, padding=2, bias=False),
+        self.weight1 = nn.Sequential(nn.Conv2d(6, dim, kernel_size=6, stride=4, padding=2, bias=False),
                                      nn.BatchNorm2d(1),
-                                     nn.Tanh(),
-                                     nn.Conv2d(1, 1, kernel_size=6, stride=4, padding=2, bias=False),
-                                     nn.BatchNorm2d(1),
-                                     nn.Tanh(),
-                                    nn.Conv2d(1, 1, kernel_size=6, stride=4, padding=2, bias=False),
-                                    nn.BatchNorm2d(1),
-                                    nn.ReLU())
+                                     nn.Sigmoid())
+        self.weight2 = nn.Sequential(nn.Conv2d(2*dim, dim, kernel_size=1, padding=0, bias=False),
+                                     nn.BatchNorm2d(dim),
+                                     nn.ReLU(),
+                                     nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=True),
+                                     nn.ReLU())
 
     def forward(self, x_input, y_input, *args, p_color=None, detach_seg=True):
         mask, image_ir, image_rgb = args
@@ -1895,14 +1894,14 @@ class AttnFusionBlock(nn.Module):
         xy = self.conv_combination(torch.cat([x, y], dim=1))
         LF = self.LFExtractor(xy)
         HF = self.HFExtractor(xy)
-        seg = self.seg_head(image_ir)
+        seg = self.seg_head(image_ir) - 0.5
         LF = self.CA_LF(LF, seg.detach() if detach_seg else seg)
         HF = self.CA_HF(HF, seg.detach() if detach_seg else seg)
         if p_color is None:
             p_color = torch.zeros([3]).to(x_input.device)
         z = self.Decoder(torch.cat([LF, HF, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
-        mask = x > z
-        return nn.Tanh()(x * mask + z * ~mask), seg #x + z * (self.weight(torch.cat([image_ir, image_rgb], dim=1)).mean() + 0.25)), seg
+        w = self.weight2(torch.cat([self.weight1(torch.cat([image_ir, image_rgb], dim=1)), z], dim=1))
+        return x * w + z * (1-w), seg #x + z * (self.weight(torch.cat([image_ir, image_rgb], dim=1)).mean() + 0.25)), seg
 
 
 #### PLEXERS
@@ -1962,8 +1961,8 @@ class Plexer(nn.Module):
             filename = path + f'{i}.pth'
             if isfile(filename):
                 dic = torch.load(filename)
-                dic = {k: v if not 'seg_head.model.1.weight' == k else v[:, [0, -2, -1]] for k, v in dic.items()}
-                net.load_state_dict(dic)
+                # dic_ = {k: v for k, v in dic.items() if not 'weight' == k.split('.')[0]}
+                net.load_state_dict(dic_)
 
 
 class G_Plexer(Plexer):
