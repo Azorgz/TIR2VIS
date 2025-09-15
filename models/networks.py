@@ -1905,9 +1905,8 @@ class AttnFusionBlock(nn.Module):
             p_color = torch.zeros([3]).to(x_input.device)
         z = self.Decoder(torch.cat([LF, HF, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
         w = self.weight2(torch.cat([self.weight1(torch.cat([image_ir, image_rgb], dim=1)), z], dim=1))
-        x_unorm = x * (x_max - x_min + 1e-6) + x_min
-        z_unorm = z * (x_max - x_min + 1e-6) + x_min
-        return x_unorm * w + z_unorm * (1-w), seg #x + z * (self.weight(torch.cat([image_ir, image_rgb], dim=1)).mean() + 0.25)), seg
+        out_norm = x * w + z * (1-w)
+        return out_norm * (x_max - x_min + 1e-6) + x_min, seg #x + z * (self.weight(torch.cat([image_ir, image_rgb], dim=1)).mean() + 0.25)), seg
 
 
 #### PLEXERS
