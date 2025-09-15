@@ -1857,11 +1857,11 @@ class AttnFusionBlock(nn.Module):
     def __init__(self, dim=128, nc=19):
         super(AttnFusionBlock, self).__init__()
         self.shuffle_ir = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
-                                        nn.BatchNorm2d(dim), nn.Tanh())
+                                        nn.BatchNorm2d(dim), nn.ReLU())
         self.shuffle_rgb = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
-                                         nn.BatchNorm2d(dim), nn.Tanh())
+                                         nn.BatchNorm2d(dim), nn.ReLU())
         self.conv_combination = nn.Sequential(nn.Conv2d(2 * dim, dim, kernel_size=1, padding=0, bias=False),
-                                              nn.BatchNorm2d(dim), nn.Tanh())
+                                              nn.BatchNorm2d(dim), nn.ReLU())
         self.LFExtractor = nn.DataParallel(LowFreqExtractor(dim=dim))
         self.HFExtractor = nn.DataParallel(HighFreqExtractor(num_layers=3, dim=dim))
         self.CA_HF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=nc))
@@ -1871,13 +1871,13 @@ class AttnFusionBlock(nn.Module):
         self.seg_head = DynamicUnet(layers, 19, (256, 256), norm_type=None)
         self.Decoder = nn.Sequential(nn.Conv2d(dim * 2 + 3, dim, kernel_size=1, padding=0, bias=False),
                                      nn.BatchNorm2d(dim),
-                                     nn.Tanh(),
+                                     nn.ReLU(),
                                      nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
                                      nn.BatchNorm2d(dim),
-                                     nn.Tanh(),
+                                     nn.ReLU(),
                                      nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
                                      nn.BatchNorm2d(dim),
-                                     nn.Tanh())
+                                     nn.ReLU())
         self.weight1 = nn.Sequential(nn.Conv2d(6, dim, kernel_size=6, stride=4, padding=2, bias=False),
                                      nn.BatchNorm2d(dim),
                                      nn.Sigmoid())
@@ -1889,8 +1889,12 @@ class AttnFusionBlock(nn.Module):
 
     def forward(self, x_input, y_input, *args, p_color=None, detach_seg=True):
         mask, image_ir, image_rgb = args
-        x = self.shuffle_ir(x_input)
-        y = self.shuffle_rgb(y_input)
+        x_max, x_min = x_input.max(), x_input.min()
+        y_max, y_min = y_input.max(),  y_input.min()
+        x_norm = (x_input - x_min)/(x_max - x_min + 1e-6)
+        y_norm = (y_input - y_min)/(y_max - y_min + 1e-6)
+        x = self.shuffle_ir(x_norm)
+        y = self.shuffle_rgb(y_norm)
         xy = self.conv_combination(torch.cat([x, y], dim=1))
         LF = self.LFExtractor(xy)
         HF = self.HFExtractor(xy)
@@ -1901,7 +1905,9 @@ class AttnFusionBlock(nn.Module):
             p_color = torch.zeros([3]).to(x_input.device)
         z = self.Decoder(torch.cat([LF, HF, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
         w = self.weight2(torch.cat([self.weight1(torch.cat([image_ir, image_rgb], dim=1)), z], dim=1))
-        return x * w + z * (1-w), seg #x + z * (self.weight(torch.cat([image_ir, image_rgb], dim=1)).mean() + 0.25)), seg
+        x_unorm = x * (x_max - x_min + 1e-6) + x_min
+        z_unorm = z * (x_max - x_min + 1e-6) + x_min
+        return x_unorm * w + z_unorm * (1-w), seg #x + z * (self.weight(torch.cat([image_ir, image_rgb], dim=1)).mean() + 0.25)), seg
 
 
 #### PLEXERS
