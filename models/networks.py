@@ -352,7 +352,7 @@ class CrossAttention(nn.Module):
         self.temperature = nn.Parameter(torch.ones(num_heads, 1, 1))
         self.k = nn.Sequential(nn.Conv2d(detdim, fudim, kernel_size=1, stride=1, bias=bias),
                                nn.SiLU(inplace=True),
-                               nn.ReflectionPad2d(sf - 1),
+                               nn.ReflectionPad2d(max(sf - 1, 1)),
                                nn.Conv2d(fudim, fudim, kernel_size=3, stride=sf, padding=0, groups=fudim,
                                          bias=bias),
                                nn.SiLU(inplace=True),
@@ -1856,19 +1856,23 @@ class SegmentorHeadv2(nn.Module):
 class AttnFusionBlock(nn.Module):
     def __init__(self, dim=128, nc=19):
         super(AttnFusionBlock, self).__init__()
+        self.features_vis = nn.Sequential(nn.Conv2d(3, dim//4, kernel_size=6, padding=1, stride=4, bias=False),
+                                          nn.BatchNorm2d(dim//4), nn.ReLU())
         self.shuffle_ir = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
-                                        nn.BatchNorm2d(dim), nn.ReLU())
-        self.shuffle_rgb = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
-                                         nn.BatchNorm2d(dim), nn.ReLU())
-        self.conv_combination = nn.Sequential(nn.Conv2d(2 * dim, dim, kernel_size=1, padding=0, bias=False),
-                                              nn.BatchNorm2d(dim), nn.ReLU())
+                                        nn.BatchNorm2d(dim), nn.Sigmoid())
+
         self.LFExtractor = nn.DataParallel(LowFreqExtractor(dim=dim))
         self.HFExtractor = nn.DataParallel(HighFreqExtractor(num_layers=3, dim=dim))
-        self.CA_SEG = nn.DataParallel(CrossAttentionBlock(dimf=nc, dimd=3, sf=1))
-        self.CA_LF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=nc))
-        # self.seg_head = SegmentorHeadv2(input_nc=1, n_blocks=4, ngf=64, num_classes=nc)
+
         layers = nn.Sequential(*list(resnet34().children())[:-2])
-        self.seg_head = DynamicUnet(layers, 19, (256, 256), norm_type=None)
+        self.seg_head = DynamicUnet(layers, 19*8, (256, 256), norm_type=None)
+        self.seg_reg = nn.Sequential(nn.Conv2d(8 * nc, nc, kernel_size=1, padding=0, bias=False),
+                                               nn.BatchNorm2d(nc), nn.Tanh())
+        self.seg_ds = nn.Sequential(nn.Conv2d(nc, dim, kernel_size=6, padding=1, stride=4, bias=False),
+                                              nn.BatchNorm2d(dim), nn.ReLU())
+
+        self.CA_SEG = nn.DataParallel(CrossAttentionBlock(dimf=nc*8, dimd=3, sf=1))
+        self.CA_LF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=dim//4, sf=1))
         self.Decoder = nn.Sequential(nn.Conv2d(dim * 2 + 3, dim, kernel_size=1, padding=0, bias=False),
                                      nn.BatchNorm2d(dim),
                                      nn.Sigmoid(),
@@ -1878,6 +1882,11 @@ class AttnFusionBlock(nn.Module):
                                      nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
                                      nn.BatchNorm2d(dim),
                                      nn.Sigmoid())
+
+        self.conv_combination = nn.Sequential(nn.Conv2d(2*dim, dim, kernel_size=1, padding=0, bias=False),
+                                                nn.BatchNorm2d(dim),
+                                                nn.ReLU())
+
         # self.weight1 = nn.Sequential(nn.Conv2d(6, dim, kernel_size=6, stride=4, padding=2, bias=False),
         #                              nn.BatchNorm2d(dim),
         #                              nn.Sigmoid())
@@ -1890,22 +1899,25 @@ class AttnFusionBlock(nn.Module):
     def forward(self, x_input, y_input, *args, p_color=None, detach_seg=True):
         mask, image_ir, image_rgb = args
         x_max, x_min = x_input.max(), x_input.min()
-        y_max, y_min = y_input.max(),  y_input.min()
+        # y_max, y_min = y_input.max(),  y_input.min()
         x_norm = (x_input - x_min)/(x_max - x_min + 1e-6)
-        y_norm = (y_input - y_min)/(y_max - y_min + 1e-6)
+        # y_norm = (y_input - y_min)/(y_max - y_min + 1e-6)
         x = self.shuffle_ir(x_norm)
-        y = self.shuffle_rgb(y_norm)
+        features_vis = self.features_vis(image_rgb)
+
         seg = self.seg_head(image_ir) - 0.5
         seg = self.CA_SEG(seg, image_ir)
+        seg = self.seg_reg(seg)
+        seg_ds = self.seg_ds(seg)
+
         LF = self.LFExtractor(x)
         HF = self.HFExtractor(x)
-        # LF = self.CA_LF(LF, seg.detach() if detach_seg else seg)
-        LF = self.CA_LF(LF, seg.detach() if detach_seg else seg)
+        LF = self.CA_LF(LF, features_vis)
         x = self.conv_combination(torch.cat([HF, LF], dim=1))
 
         if p_color is None:
             p_color = torch.zeros([3]).to(x_input.device)
-        z = self.Decoder(torch.cat([x, y, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
+        z = self.Decoder(torch.cat([x, seg_ds, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
         # w = self.weight2(torch.cat([self.weight1(torch.cat([image_ir, image_rgb], dim=1)), z], dim=1))
         out_norm = z
         # out_norm = x * w + z * (1-w)
