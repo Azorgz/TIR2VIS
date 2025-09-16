@@ -1900,7 +1900,7 @@ class AttnFusionBlock(nn.Module):
         HF = self.HFExtractor(xy)
         seg = self.seg_head(image_ir) - 0.5
         LF = self.CA_LF(LF, seg.detach() if detach_seg else seg)
-        HF = self.CA_HF(HF, seg.detach() if detach_seg else seg)
+        # HF = self.CA_HF(HF, seg.detach() if detach_seg else seg)
         if p_color is None:
             p_color = torch.zeros([3]).to(x_input.device)
         z = self.Decoder(torch.cat([LF, HF, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
