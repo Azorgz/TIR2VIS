@@ -1912,8 +1912,8 @@ class AttnFusionBlock(nn.Module):
 
         LF = self.LFExtractor(x)
         HF = self.HFExtractor(x)
-        LF = self.CA_LF(LF, features_vis)
         x = self.conv_combination(torch.cat([HF, LF], dim=1))
+        x = self.CA_LF(x, features_vis)
 
         if p_color is None:
             p_color = torch.zeros([3]).to(x_input.device)
