@@ -1883,9 +1883,9 @@ class AttnFusionBlock(nn.Module):
                                      nn.Sigmoid())
         self.weight2 = nn.Sequential(nn.Conv2d(2*dim, dim, kernel_size=1, padding=0, bias=False),
                                      nn.BatchNorm2d(dim),
-                                     nn.ReLU(),
+                                     nn.Sigmoid(),
                                      nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=True),
-                                     nn.ReLU())
+                                     nn.Sigmoid())
 
     def forward(self, x_input, y_input, *args, p_color=None, detach_seg=True):
         mask, image_ir, image_rgb = args
