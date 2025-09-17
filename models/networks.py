@@ -1413,10 +1413,10 @@ class ConcatBlock(nn.Module):
         #
         self.conv_block_fus = nn.Sequential(*conv_block_fus)
 
-    def forward(self, x_input, y_input, *args, p_color=None):
+    def forward(self, x_input, y_input, *args, p_color=None, **kwargs):
         z = y_input
         for i, conv in enumerate(self.conv_block_fus):
-            z = conv((x_input, z), *args, p_color=p_color)
+            z = conv((x_input, z), *args, p_color=p_color, **kwargs)
         return z, None
 
 
