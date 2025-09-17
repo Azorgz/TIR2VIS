@@ -1177,6 +1177,7 @@ class GanColorCombo(ComboGANModel):
             self.segMask_Fus_update = F.interpolate(segMask_Fus, size=[256, 256]).argmax(dim=1, keepdim=True).float()
         else:
             self.segMask_Fus_update = None
+            segMask_Fus = 0
 
         # Optional Scale Robustness Loss on generated fake images, added by lfy
         self.loss_SR = {self.DC: 0.0}
