@@ -997,7 +997,7 @@ class GanColorCombo(ComboGANModel):
             #     if self.cond('DC', 'EC', 'EA', 'DA') else self.null
             self.loss_cycle[self.DC] += loss_cycle(self.rec_B_A_BC, self.real_B) \
                 if self.cond('EC', 'EB', 'DB', 'EA', 'DA') else self.null
-            self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A_BC, self.real_C)*3 \
+            self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A_BC*self.mask, self.real_C*self.mask)*3 \
                 if self.cond('EC', 'EB', 'DC', 'EA', 'DA') else self.null
             # rec_encoded_BC = self.netG.encode(self.fake_BC, self.DC)
             # self.rec_B_BC = self.netG.decode(rec_encoded_BC, self.DB)
