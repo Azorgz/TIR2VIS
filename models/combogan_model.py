@@ -1157,7 +1157,7 @@ class GanColorCombo(ComboGANModel):
             else:
                 ####75-100 epoch, constraining semantic consistency after fixing segmentation networks of the two domains.
                 self.SegMask_A_update = self.UpdateVisGTv2(fake_B_s.detach(), SegMask_A_s[0].long(), 0.25)
-                self.SegMask_A_update = self.UpdateVisGTv2(fake_C_A_s.detach(), self.SegMask_A_update.long(), 0.25)
+                # self.SegMask_A_update = self.UpdateVisGTv2(fake_C_A_s.detach(), self.SegMask_A_update.long(), 0.25)
                 seg_loss_A = self.update_class_criterion(self.SegMask_A_update.long())
                 self.loss_S_rec[self.DB] = self.lambda_sc * seg_loss_A(fake_B_pred, self.SegMask_A_update.long())
                 self.SegMask_B_update = self.UpdateIRGTv2(real_B_pred.detach(), fake_A_BC_pred_d,
