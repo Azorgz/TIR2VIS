@@ -1277,6 +1277,7 @@ def UpdateFakeIRSegGT(fake_IR, Seg_mask, dis_th):
     _, seg_h, seg_w = Seg_mask.size()
     GT_mask = F.interpolate(Seg_mask.expand(1, 1, seg_h, seg_w).float(), size=[h, w], mode='nearest').squeeze()
     veg_mask = torch.where(GT_mask == 8.0, torch.ones_like(GT_mask), torch.zeros_like(GT_mask))
+    sky_mask = torch.where(GT_mask == 10.0, torch.ones_like(GT_mask), torch.zeros_like(GT_mask))
 
     fake_img_norm = (fake_IR + 1.0) * 0.5
     fake_IR_gray = torch.squeeze(
@@ -1298,8 +1299,16 @@ def UpdateFakeIRSegGT(fake_IR, Seg_mask, dis_th):
             out_mask = mask_new_GT.expand(1, h, w)
         else:
             out_mask = Seg_mask
+
+        if torch.sum(sky_mask) > 0:
+            region_sky = sky_mask.mul(fake_IR_gray)
+            sky_high_mask = torch.where(region_sky > region_veg_mean, 1., 0.)
+            mask_new_GT = sky_high_mask * 255.0 + (1. - sky_high_mask).mul(out_mask)
+            out_mask = mask_new_GT.expand(1, h, w)
     else:
         out_mask = Seg_mask
+
+
 
     return out_mask
 

@@ -964,7 +964,7 @@ class GanColorCombo(ComboGANModel):
         # loss_likeness
         loss_likeness = self.null
         # loss_likeness += self.CriterionLikeness(self.fake_C_B * self.mask, self.real_C * self.mask) if self.cond('EB', 'DC') else self.null
-        loss_likeness += self.CriterionLikeness(self.fake_B_C, self.real_B)*3 if self.cond('EC', 'DB') else self.null
+        loss_likeness += self.CriterionLikeness(self.fake_B_C, self.real_B) if self.cond('EC', 'DB') else self.null
         loss_likeness += self.CriterionLikeness(self.fake_C_A, self.real_A)
 
         # Cycle loss
@@ -997,7 +997,7 @@ class GanColorCombo(ComboGANModel):
             #     if self.cond('DC', 'EC', 'EA', 'DA') else self.null
             self.loss_cycle[self.DC] += loss_cycle(self.rec_B_A_BC, self.real_B) \
                 if self.cond('EC', 'EB', 'DB', 'EA', 'DA') else self.null
-            self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A_BC, self.real_C) \
+            self.loss_cycle[self.DC] += loss_cycle(self.rec_C_A_BC, self.real_C)*3 \
                 if self.cond('EC', 'EB', 'DC', 'EA', 'DA') else self.null
             # rec_encoded_BC = self.netG.encode(self.fake_BC, self.DC)
             # self.rec_B_BC = self.netG.decode(rec_encoded_BC, self.DB)
@@ -1261,13 +1261,13 @@ class GanColorCombo(ComboGANModel):
 
             Com_RealVis = out_FG_RealVis + out_FG_RealVis_flip
             ###Traffic Light Luminance Loss
-            loss_tll = self.criterionTLL(self.fake_A_BC, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
-            loss_tll += self.criterionTLL(self.fake_A, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
+            loss_tll = self.criterionTLL(self.fake_A_BC, real_B_Mask, self.real_B.detach(), self.gpu_ids[0]) * 3
+            # loss_tll += self.criterionTLL(self.fake_A, real_B_Mask, self.real_B.detach(), self.gpu_ids[0])
             ####Traffic light color loss
-            # loss_TLight_color = self.criterionTLC(self.real_B, self.fake_A_BC, real_B_Mask,
-            #                                       Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
-            loss_TLight_color = self.criterionTLC(self.real_B, self.fake_A, real_B_Mask,
-                                                   Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
+            loss_TLight_color = self.criterionTLC(self.real_B, self.fake_A_BC, real_B_Mask,
+                                                  Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0]) * 3
+            # loss_TLight_color = self.criterionTLC(self.real_B, self.fake_A, real_B_Mask,
+            #                                        Com_RealVis, ComIR_Light_Mask, HL_Mask, self.gpu_ids[0])
             loss_TLight_appe = loss_tll + loss_TLight_color
             ####Appearance consistency loss of domain B
             self.loss_AC[self.DB] = loss_ACL_B + loss_ACL_B_flip + loss_CGR_masked
