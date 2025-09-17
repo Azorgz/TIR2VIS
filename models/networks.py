@@ -1905,11 +1905,6 @@ class AttnFusionBlock(nn.Module):
         x = self.shuffle_ir(x_norm)
         features_vis = self.features_vis(image_rgb)
 
-        seg = self.seg_head(image_ir) - 0.5
-        seg = self.CA_SEG(seg, image_ir)
-        seg = self.seg_reg(seg)
-        seg_ds = self.seg_ds(seg)
-
         LF = self.LFExtractor(x)
         HF = self.HFExtractor(x)
         x = self.conv_combination(torch.cat([HF, LF], dim=1))
@@ -1917,11 +1912,11 @@ class AttnFusionBlock(nn.Module):
 
         if p_color is None:
             p_color = torch.zeros([3]).to(x_input.device)
-        z = self.Decoder(torch.cat([x, seg_ds, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
+        z = self.Decoder(torch.cat([x, p_color[None, :, None, None].expand_as(x_input[:, :3])], dim=1))
         # w = self.weight2(torch.cat([self.weight1(torch.cat([image_ir, image_rgb], dim=1)), z], dim=1))
         out_norm = z
         # out_norm = x * w + z * (1-w)
-        return out_norm * (x_max - x_min + 1e-6) + x_min, seg #x + z * (self.weight(torch.cat([image_ir, image_rgb], dim=1)).mean() + 0.25)), seg
+        return out_norm * (x_max - x_min + 1e-6) + x_min, None #x + z * (self.weight(torch.cat([image_ir, image_rgb], dim=1)).mean() + 0.25)), seg
 
 
 #### PLEXERS
