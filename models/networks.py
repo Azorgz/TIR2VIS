@@ -1250,7 +1250,7 @@ class ResnetBlock(nn.Module):
 
         self.conv_block = SequentialContext(n_domains, *conv_block)
 
-    def forward(self, input):
+    def forward(self, input, **kwargs):
         if isinstance(input, tuple):
             return input[0] + self.conv_block(*input)
         return input + self.conv_block(input)
