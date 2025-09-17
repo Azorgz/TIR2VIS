@@ -1865,15 +1865,15 @@ class AttnFusionBlock(nn.Module):
         self.HFExtractor = nn.DataParallel(HighFreqExtractor(num_layers=3, dim=dim))
 
         layers = nn.Sequential(*list(resnet34().children())[:-2])
-        self.seg_head = DynamicUnet(layers, 19*8, (256, 256), norm_type=None)
-        self.seg_reg = nn.Sequential(nn.Conv2d(8 * nc, nc, kernel_size=1, padding=0, bias=False),
-                                               nn.BatchNorm2d(nc), nn.Tanh())
-        self.seg_ds = nn.Sequential(nn.Conv2d(nc, dim, kernel_size=6, padding=1, stride=4, bias=False),
-                                              nn.BatchNorm2d(dim), nn.ReLU())
-
-        self.CA_SEG = nn.DataParallel(CrossAttentionBlock(dimf=nc*8, dimd=3, sf=1))
+        # self.seg_head = DynamicUnet(layers, 19*8, (256, 256), norm_type=None)
+        # self.seg_reg = nn.Sequential(nn.Conv2d(8 * nc, nc, kernel_size=1, padding=0, bias=False),
+        #                                        nn.BatchNorm2d(nc), nn.Tanh())
+        # self.seg_ds = nn.Sequential(nn.Conv2d(nc, dim, kernel_size=6, padding=1, stride=4, bias=False),
+        #                                       nn.BatchNorm2d(dim), nn.ReLU())
+        #
+        # self.CA_SEG = nn.DataParallel(CrossAttentionBlock(dimf=nc*8, dimd=3, sf=1))
         self.CA_LF = nn.DataParallel(CrossAttentionBlock(dimf=dim, dimd=dim//4, sf=1))
-        self.Decoder = nn.Sequential(nn.Conv2d(dim * 2 + 3, dim, kernel_size=1, padding=0, bias=False),
+        self.Decoder = nn.Sequential(nn.Conv2d(dim + 3, dim, kernel_size=1, padding=0, bias=False),
                                      nn.BatchNorm2d(dim),
                                      nn.Sigmoid(),
                                      nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=False),
@@ -1887,14 +1887,6 @@ class AttnFusionBlock(nn.Module):
                                                 nn.BatchNorm2d(dim),
                                                 nn.ReLU())
 
-        # self.weight1 = nn.Sequential(nn.Conv2d(6, dim, kernel_size=6, stride=4, padding=2, bias=False),
-        #                              nn.BatchNorm2d(dim),
-        #                              nn.Sigmoid())
-        # self.weight2 = nn.Sequential(nn.Conv2d(2*dim, dim, kernel_size=1, padding=0, bias=False),
-        #                              nn.BatchNorm2d(dim),
-        #                              nn.Sigmoid(),
-        #                              nn.Conv2d(dim, dim, kernel_size=1, padding=0, bias=True),
-        #                              nn.Sigmoid())
 
     def forward(self, x_input, y_input, *args, p_color=None, detach_seg=True):
         mask, image_ir, image_rgb = args
